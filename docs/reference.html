@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lite Land Manual · Reference</title>
+<title>Lite Classify Manual · Reference</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-<link rel="icon" type="image/png" href="img/brand/lite_land_64.png">
-<link rel="apple-touch-icon" href="img/brand/lite_land_180.png">
+<link rel="icon" type="image/png" href="img/brand/liteclassify_64.png">
+<link rel="apple-touch-icon" href="img/brand/liteclassify_180.png">
 <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -16,14 +16,14 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Land</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
         <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
       <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
     </div>
   </div>
   <div class="topbar-inner">
-  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/lite_land_64.png" alt="" width="26" height="26"><span>Lite Land <span class="brand-sub">Manual</span></span></a>
+  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/liteclassify_64.png" alt="" width="26" height="26"><span>Lite Classify <span class="brand-sub">Manual</span></span></a>
   <nav class="parts" aria-label="Manual parts">
     <a href="index.html"><span>A</span>Getting started</a>
     <a href="concepts.html"><span>B</span>How it works</a>
@@ -55,7 +55,7 @@
 <section class="hero">
   <p class="eyebrow">Part D · Reference</p>
   <h1>Reference</h1>
-  <p class="lead">Files Lite Land writes, every adjustable setting, what the console's messages mean, the terms used in this manual, and how to cite and reuse Lite Land.</p>
+  <p class="lead">Files Lite Classify writes, every adjustable setting, what the console's messages mean, the terms used in this manual, and how to cite and reuse Lite Classify.</p>
 </section>
 
 <h2 id="files"><span class="num">11</span>Workspaces, outputs and file formats</h2>
@@ -83,26 +83,26 @@
 <div class="table-wrap"><table>
   <thead><tr><th>File</th><th>Written by</th><th>Format</th><th>Open with</th></tr></thead>
   <tbody>
-    <tr><td><code>session.json</code></td><td>Save Workspace</td><td>JSON text</td><td>Lite Land; any text editor</td></tr>
+    <tr><td><code>session.json</code></td><td>Save Workspace</td><td>JSON text</td><td>Lite Classify; any text editor</td></tr>
     <tr><td><code>segments.tif</code></td><td>Save Workspace</td><td>GeoTIFF, 1 band, int32, 0 = no data</td><td>QGIS, ArcGIS</td></tr>
     <tr><td><code>segments.gpkg</code></td><td>Save Workspace</td><td>GeoPackage polygons, field <code>raster_val</code> = segment ID</td><td>QGIS, ArcGIS</td></tr>
     <tr><td><code>segment_features.csv</code></td><td>Save Workspace</td><td>CSV, one row per segment, index <code>raster_val</code>; 19, 24 or (with appearance) 44 feature columns</td><td>Excel, R, Python</td></tr>
-    <tr><td><code>deep_features.npz</code></td><td>Find Groups, Save Workspace</td><td>Compressed NumPy: 384 numbers per segment per patch size, plus a fingerprint of the segmentation</td><td>Lite Land; Python</td></tr>
-    <tr><td><code>groups.json</code></td><td>Save Workspace</td><td>JSON: group of every segment, names, status, settings</td><td>Lite Land; any text editor</td></tr>
-    <tr><td><code>classified_map.npy</code></td><td>Save Workspace</td><td>NumPy array, class index per pixel</td><td>Lite Land; Python</td></tr>
+    <tr><td><code>deep_features.npz</code></td><td>Find Groups, Save Workspace</td><td>Compressed NumPy: 384 numbers per segment per patch size, plus a fingerprint of the segmentation</td><td>Lite Classify; Python</td></tr>
+    <tr><td><code>groups.json</code></td><td>Save Workspace</td><td>JSON: group of every segment, names, status, settings</td><td>Lite Classify; any text editor</td></tr>
+    <tr><td><code>classified_map.npy</code></td><td>Save Workspace</td><td>NumPy array, class index per pixel</td><td>Lite Classify; Python</td></tr>
     <tr><td><code>*_classified.tif</code></td><td>Export Final Classified TIF</td><td>GeoTIFF, 1 band, uint8, colour table; 0 = no data, 1… = classes in list order</td><td>QGIS, ArcGIS</td></tr>
     <tr><td><code>*_classified.qml</code></td><td>Export Final Classified TIF</td><td>QGIS layer style: class names and colours</td><td>QGIS (loads automatically beside the .tif)</td></tr>
     <tr><td><code>accuracy_points.gpkg</code></td><td>Save Points, Save Workspace, Run Accuracy Assessment</td><td>GeoPackage points: <code>point_id</code>, <code>reference_class</code>, <code>predicted_class</code>, <code>source</code>, <code>stratum</code></td><td>QGIS, ArcGIS</td></tr>
     <tr><td><code>accuracy_report.csv</code></td><td>Run Accuracy Assessment</td><td>CSV: matrix, accuracies, sample size, source note; area-weighted estimates and class areas for stratified samples</td><td>Excel</td></tr>
-    <tr><td><code>iterations/</code></td><td>Run Accuracy Assessment</td><td><code>iterations.json</code> plus one set of files per run</td><td>Lite Land</td></tr>
+    <tr><td><code>iterations/</code></td><td>Run Accuracy Assessment</td><td><code>iterations.json</code> plus one set of files per run</td><td>Lite Classify</td></tr>
   </tbody>
 </table></div>
-<p class="small">Appearance features and groups carry a fingerprint of the segmentation that produced them; Lite Land never applies them to a different segmentation.</p>
+<p class="small">Appearance features and groups carry a fingerprint of the segmentation that produced them; Lite Classify never applies them to a different segmentation.</p>
 
 <h3 id="reload">Reopening a workspace</h3>
 <ul>
-  <li><strong><span class="ui">File › Load Workspace</span></strong> (<kbd>Ctrl</kbd>+<kbd>O</kbd>): pick the workspace folder. Lite Land reopens the recorded orthomosaic and DSM straight at the saved resolution, then restores segments, features, groups, classes, samples, the map, points and iterations.</li>
-  <li><strong>If files have moved,</strong> Lite Land asks you to locate them.</li>
+  <li><strong><span class="ui">File › Load Workspace</span></strong> (<kbd>Ctrl</kbd>+<kbd>O</kbd>): pick the workspace folder. Lite Classify reopens the recorded orthomosaic and DSM straight at the saved resolution, then restores segments, features, groups, classes, samples, the map, points and iterations.</li>
+  <li><strong>If files have moved,</strong> Lite Classify asks you to locate them.</li>
   <li><strong><span class="ui">Save Workspace As</span></strong> copies the imagery and the workspace to a new folder, for a backup or to hand a project to someone else.</li>
 </ul>
 <p><span class="ui">Reset and Return to Loading</span> on Tab 4 clears the session in memory and returns to Tab 1. It does not delete anything on disk.</p>
@@ -113,7 +113,8 @@
   <tbody>
     <tr><td>Resample Scale</td><td>1</td><td class="mono">5–100%</td><td class="mono">100%</td><td>Detail is lost or objects blur together</td><td>Segments outline leaves; memory runs short; runs are slow</td></tr>
     <tr><td>Target Resolution</td><td>1</td><td class="mono">native–20× native</td><td class="mono">native</td><td colspan="2">Same as Resample Scale, in cm/px. Projected coordinate systems only.</td></tr>
-    <tr><td>Num Segments</td><td>1</td><td class="mono">100–2,000,000</td><td class="mono">5,000</td><td>Segments mix two classes; small features have no segment of their own</td><td>Uniform areas are shattered into slivers</td></tr>
+    <tr><td>Object Size</td><td>1</td><td class="mono">0.5–10,000 m²</td><td class="mono">10 m²</td><td>Uniform areas are shattered into slivers</td><td>Segments mix two classes; small features have no segment of their own</td></tr>
+    <tr><td>Num Segments</td><td>1</td><td class="mono">100–2,000,000</td><td>from Object Size</td><td>Segments mix two classes; small features have no segment of their own</td><td>Uniform areas are shattered into slivers</td></tr>
     <tr><td>Compactness</td><td>1</td><td class="mono">0.01–1.00</td><td class="mono">0.15</td><td>Segments are too irregular or stringy</td><td>Segments cut straight across visible edges</td></tr>
     <tr><td>Sigma</td><td>1</td><td class="mono">0–10</td><td class="mono">2.5</td><td>Outlines are ragged; a grid pattern appears</td><td>Small features are smoothed away</td></tr>
     <tr><td>Colour/texture at</td><td>1</td><td class="mono">native–working</td><td>working grid</td><td colspan="2">Finer = texture from full detail, slower feature step. Takes effect at the next segmentation.</td></tr>
@@ -122,7 +123,7 @@
     <tr><td>Typical segments per group</td><td>2 (Send)</td><td class="mono">1–200</td><td class="mono">12</td><td>Classes need more samples</td><td>Groups are mixed: send fewer, more central ones</td></tr>
     <tr><td>Grow Tolerance</td><td>3</td><td class="mono">0–3.00</td><td class="mono">1.00</td><td>Growth stops short of a uniform area</td><td>Growth leaks into different ground</td></tr>
     <tr><td>Opacity (blend)</td><td>3</td><td class="mono">0–100%</td><td class="mono">100%</td><td colspan="2">Display only.</td></tr>
-    <tr><td>MMU (px)</td><td>3</td><td class="mono">0–2,000</td><td class="mono">0</td><td>The map is too speckled for its use</td><td>Small real features disappear</td></tr>
+    <tr><td>MMU (px / m²)</td><td>3</td><td class="mono">0–2,000 px</td><td class="mono">0</td><td>The map is too speckled for its use</td><td>Small real features disappear</td></tr>
     <tr><td>Min per Class</td><td>4</td><td class="mono">1–1,000</td><td class="mono">50</td><td>Per-class intervals are too wide</td><td>Labelling time is short</td></tr>
     <tr><td>Points to Add</td><td>4</td><td class="mono">1–20,000</td><td class="mono">200</td><td>Overall interval too wide; rare classes under ~30 points</td><td>—</td></tr>
   </tbody>
@@ -131,11 +132,11 @@
 <p class="small">Random Forest: 100 trees, scikit-learn defaults otherwise, fixed seed (42). DINOv2: ViT-S/14, frozen; patches of 5 m and 10 m resized to 224 px; 32 principal components per patch size for Discover, 10 for the classifier. Height above ground: ground from a 40 m opening of the DSM at ~1 m. GLCM: 15 grey levels, distance 1, four directions.</p>
 <h3>Starting values</h3>
 <div class="table-wrap"><table>
-  <thead><tr><th>Situation</th><th>Working grid</th><th>Num Segments</th><th>Colour/texture at</th></tr></thead>
+  <thead><tr><th>Situation</th><th>Working grid</th><th>Object size / segments</th><th>Colour/texture at</th></tr></thead>
   <tbody>
     <tr><td>The worked example (55 ha, mixed use, narrow stream)</td><td class="mono">10 cm</td><td class="mono">60,000</td><td class="mono">native 3.3 cm</td></tr>
-    <tr><td>Forest gaps and crowns, tens of hectares</td><td class="mono">10–25 cm</td><td class="mono">~1 per 10–30 m²</td><td class="mono">native or 5 cm</td></tr>
-    <tr><td>Very large mosaics (100+ ha)</td><td class="mono">20–25 cm</td><td class="mono">raise with area; tiles</td><td class="mono">working grid</td></tr>
+    <tr><td>Forest gaps and crowns, tens of hectares</td><td class="mono">10–25 cm</td><td class="mono">Object Size 10–30 m²</td><td class="mono">native or 5 cm</td></tr>
+    <tr><td>Very large mosaics (100+ ha)</td><td class="mono">20–25 cm</td><td class="mono">Object Size 20–50 m²; tiles</td><td class="mono">working grid</td></tr>
   </tbody>
 </table></div>
 <p class="small">Judge each segmentation by eye (<a href="workflow.html#segment">Part C, 7</a>). Match the working grid to the narrowest thing you must map, not to the dominant class.</p>
@@ -181,12 +182,12 @@
     <tr><th>Adjacency graph</th><td>The list of which segments share a border. Used by the grow tool, merging and the neighbour features.</td></tr>
     <tr><th>Area-weighted estimate</th><td>An accuracy or area figure in which each stratum counts by its share of the mapped area, not its share of points.</td></tr>
     <tr><th>CIELAB</th><td>A colour space in which equal distances look like equal colour differences. SLIC clusters in it.</td></tr>
-    <tr><th>CNN</th><td>Convolutional neural network: an image model built from stacked sliding filters. Lite Land does not use one; DINOv2 is a vision transformer.</td></tr>
+    <tr><th>CNN</th><td>Convolutional neural network: an image model built from stacked sliding filters. Lite Classify does not use one; DINOv2 is a vision transformer.</td></tr>
     <tr><th>Confusion matrix</th><td>A table of map class (rows) against reference class (columns) for a set of points. Also called an error matrix.</td></tr>
-    <tr><th>DINOv2</th><td>A vision transformer from Meta AI trained without labels. Lite Land uses it frozen to describe each object's appearance.</td></tr>
+    <tr><th>DINOv2</th><td>A vision transformer from Meta AI trained without labels. Lite Classify uses it frozen to describe each object's appearance.</td></tr>
     <tr><th>DSM</th><td>Digital Surface Model: height of the top surface, including trees and roofs. Not the bare ground.</td></tr>
     <tr><th>Embedding</th><td>A list of numbers describing an image patch, arranged so that similar-looking patches get similar numbers.</td></tr>
-    <tr><th>Feature</th><td>One measured property of a segment, such as mean green or slope. Lite Land uses 19, 24 with a DSM, 44 with appearance.</td></tr>
+    <tr><th>Feature</th><td>One measured property of a segment, such as mean green or slope. Lite Classify uses 19, 24 with a DSM, 44 with appearance.</td></tr>
     <tr><th>GLCM</th><td>Grey-level co-occurrence matrix: a tally of how often grey levels sit next to each other. The source of the texture features.</td></tr>
     <tr><th>GSD</th><td>Ground sample distance: the ground width of one pixel, e.g. 3.3 cm.</td></tr>
     <tr><th>Height above ground</th><td>DSM height minus a ground surface estimated from the DSM.</td></tr>
@@ -200,9 +201,9 @@
     <tr><th>Producer's accuracy</th><td>For one class: share of its real area the map found. Measures omission.</td></tr>
     <tr><th>Random Forest</th><td>A classifier made of many decision trees, each trained on a random resample, that vote.</td></tr>
     <tr><th>Reference data</th><td>Labels used to check a map. Photo-interpreted reference is distinct from field-verified ground truth.</td></tr>
-    <tr><th>Segment / object</th><td>A connected group of similar pixels produced by segmentation. The unit Lite Land classifies.</td></tr>
+    <tr><th>Segment / object</th><td>A connected group of similar pixels produced by segmentation. The unit Lite Classify classifies.</td></tr>
     <tr><th>Sieve</th><td>A filter that absorbs patches below a size into their surroundings.</td></tr>
-    <tr><th>SLIC</th><td>Simple Linear Iterative Clustering: the segmentation algorithm Lite Land uses.</td></tr>
+    <tr><th>SLIC</th><td>Simple Linear Iterative Clustering: the segmentation algorithm Lite Classify uses.</td></tr>
     <tr><th>Stratified sample</th><td>Points drawn separately within each stratum (here, each map class) so small classes get enough points.</td></tr>
     <tr><th>Training sample</th><td>A segment you labelled to teach the classifier.</td></tr>
     <tr><th>User's accuracy</th><td>For one class: share of what the map calls that class that really is it. Measures commission.</td></tr>
@@ -231,22 +232,22 @@
 <p class="small">The figures and every number in this manual are rebuilt by <code>docs/manual/tools/build_figures_phileco.py</code> from the worked example's workspace. See <code>docs/manual/tools/README.md</code>.</p>
 
 <h2 id="licence"><span class="num">17</span>Licence and citation</h2>
-<p><strong>Lite Land will be released as free software</strong> under the GNU General Public License, version 3, with additional attribution terms (<code>LICENSE</code> and <code>NOTICE.md</code> in the source repository, coming soon). In short:</p>
+<p><strong>Lite Classify will be released as free software</strong> under the GNU General Public License, version 3, with additional attribution terms (<code>LICENSE</code> and <code>NOTICE.md</code> in the source repository, coming soon). In short:</p>
 <ul>
   <li>You may use it for any purpose, including paid work, and the maps you make with it are yours.</li>
   <li>You may study, change and share it. If you distribute it or a program built on it, you must release that program's source under the same licence.</li>
-  <li>Modified versions must keep the credit <em>"Based on Lite Land by L. D. Barua (LeoBar)"</em> in their About screen and documentation, must be marked as modified, and must use a different name.</li>
+  <li>Modified versions must keep the credit <em>"Based on Lite Classify by L. D. Barua (LeoBar)"</em> in their About screen and documentation, must be marked as modified, and must use a different name.</li>
 </ul>
-<p>For other terms, such as building Lite Land into a closed-source product, or for custom development and training, contact <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p>
-<p><strong>If you publish maps, data or papers made with Lite Land, please cite it.</strong> A paper describing Lite Land is in preparation; the citation will be given here and in the source repository when they are published.</p>
-<p class="small">Lite Land includes the DINOv2 backbone code and pretrained weights by Meta Platforms, Inc., under the Apache License 2.0.</p>
+<p>For other terms, such as building Lite Classify into a closed-source product, or for custom development and training, contact <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p>
+<p><strong>If you publish maps, data or papers made with Lite Classify, please cite it.</strong> A paper describing Lite Classify is in preparation; the citation will be given here and in the source repository when they are published.</p>
+<p class="small">Lite Classify includes the DINOv2 backbone code and pretrained weights by Meta Platforms, Inc., under the Apache License 2.0.</p>
 
 <nav class="pager" aria-label="Previous part">
   <a href="workflow.html"><span class="k">← Part C</span><b>Workflow, tab by tab</b></a>
 </nav>
 </main>
 </div>
-<footer class="foot">Lite Land User Manual · by LeoBar.</footer>
+<footer class="foot">Lite Classify User Manual · by LeoBar.</footer>
 <script data-goatcounter="https://liteland.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 <script src="manual_data.js"></script>

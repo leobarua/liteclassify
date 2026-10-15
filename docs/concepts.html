@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lite Land Manual · How it works</title>
+<title>Lite Classify Manual · How it works</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-<link rel="icon" type="image/png" href="img/brand/lite_land_64.png">
-<link rel="apple-touch-icon" href="img/brand/lite_land_180.png">
+<link rel="icon" type="image/png" href="img/brand/liteclassify_64.png">
+<link rel="apple-touch-icon" href="img/brand/liteclassify_180.png">
 <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -16,14 +16,14 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Land</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
         <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
       <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
     </div>
   </div>
   <div class="topbar-inner">
-  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/lite_land_64.png" alt="" width="26" height="26"><span>Lite Land <span class="brand-sub">Manual</span></span></a>
+  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/liteclassify_64.png" alt="" width="26" height="26"><span>Lite Classify <span class="brand-sub">Manual</span></span></a>
   <nav class="parts" aria-label="Manual parts">
     <a href="index.html"><span>A</span>Getting started</a>
     <a href="concepts.html" aria-current="page"><span>B</span>How it works</a>
@@ -60,8 +60,8 @@
 <main>
 <section class="hero">
   <p class="eyebrow">Part B · Concepts</p>
-  <h1>How Lite Land works</h1>
-  <p class="lead">Lite Land reads a drone image the way a person does. It splits the scene into objects, describes each object with up to 24 measurements and a learned description of its appearance, proposes groups of look-alike objects for you to name, and learns from your examples which descriptions belong to which class.</p>
+  <h1>How Lite Classify works</h1>
+  <p class="lead">Lite Classify reads a drone image the way a person does. It splits the scene into objects, describes each object with up to 24 measurements and a learned description of its appearance, proposes groups of look-alike objects for you to name, and learns from your examples which descriptions belong to which class.</p>
 </section>
 
 <h2 id="objects"><span class="num">5.1</span>Objects, not pixels</h2>
@@ -72,7 +72,7 @@
   <figure><img src="img/obj_means.jpg" alt="Same view with each segment filled with its mean colour"><figcaption><b>Objects</b> Each now has one colour, one texture, one shape.</figcaption></figure>
 </div>
 <p>At drone resolution a tree crown or roof spans hundreds of pixels, so objects match real things on the ground. Resolution can also be too fine. Below roughly 1–5 cm per pixel the segmenter starts outlining individual leaves and roof sheets, and objects stop meaning anything. About 5–10 cm per pixel suits crown- and gap-scale work. The worked example is captured at 3.3 cm and segmented at 10 cm.</p>
-<div class="note"><p><strong>RGB only.</strong> Consumer drone cameras record red, green and blue, with no near-infrared. That rules out NDVI, so Lite Land leans on visible-light vegetation indices, texture, height and learned appearance instead.</p></div>
+<div class="note"><p><strong>RGB only.</strong> Consumer drone cameras record red, green and blue, with no near-infrared. That rules out NDVI, so Lite Classify leans on visible-light vegetation indices, texture, height and learned appearance instead.</p></div>
 
 <h2 id="slic"><span class="num">5.2</span>Segmentation with SLIC</h2>
 <p>SLIC (Simple Linear Iterative Clustering) is k-means clustering on five numbers per pixel: three colour values in CIELAB space (L*, a*, b*) and the pixel's x and y. Seeds start on a regular grid. Each pixel then joins the nearest seed, where "near" mixes colour and distance:</p>
@@ -106,7 +106,7 @@
   </div>
 </div>
 <details class="why"><summary>Large images: tiles, and GPU vs CPU</summary>
-<p>When one run would not fit in memory, Lite Land segments the image in <strong>tiles</strong> with an overlap margin. Colour is scaled over the whole scene first and every tile aims for the same segment size, so tiles match. Each overlap pixel goes to the segment whose centre owns it, and leftover slivers merge into the neighbour they share most border with, so no object is cut or duplicated at a tile seam. Images that fit keep the single-run path.</p>
+<p>When one run would not fit in memory, Lite Classify segments the image in <strong>tiles</strong> with an overlap margin. Colour is scaled over the whole scene first and every tile aims for the same segment size, so tiles match. Each overlap pixel goes to the segment whose centre owns it, and leftover slivers merge into the neighbour they share most border with, so no object is cut or duplicated at a tile seam. Images that fit keep the single-run path.</p>
 <p>The CPU engine is scikit-image's SLIC. The GPU engine is a PyTorch version of the same clustering. They scale compactness differently, so the same value gives similar but not identical segments, and the GPU's parallel updates make it not bit-for-bit repeatable (about 98% of pixels agree between runs). Pick one engine for a project and keep it; the realised segment count, not the requested one, is what to report.</p>
 </details>
 
@@ -141,7 +141,7 @@
 <p>The three vegetation indices use chromatic coordinates, each band divided by R + G + B, so that a shaded leaf and a sunlit leaf score alike. Random Forest needs no rescaling, so features go in as measured.</p>
 
 <h3 id="feature-res">Measuring finer than you segment</h3>
-<p>Coarsening the image keeps objects crown-sized, but it also throws away the fine detail texture is computed from. Lite Land separates the two: segments are drawn on the working grid, and colour and texture are read from the original file at the finer resolution you set in <span class="ui">Colour/texture at</span>. In the worked example, outlines come from the 10 cm grid and every object's colour and texture from the native 3.3 cm pixels, about nine times as many pixels per object. Height features always use the DSM on the working grid.</p>
+<p>Coarsening the image keeps objects crown-sized, but it also throws away the fine detail texture is computed from. Lite Classify separates the two: segments are drawn on the working grid, and colour and texture are read from the original file at the finer resolution you set in <span class="ui">Colour/texture at</span>. In the worked example, outlines come from the 10 cm grid and every object's colour and texture from the native 3.3 cm pixels, about nine times as many pixels per object. Height features always use the DSM on the working grid.</p>
 
 <h3 id="explorer">Feature explorer</h3>
 <p>Pick a feature to see its value for every object in one 128 × 96 m patch of the worked example: a road junction with roofs and a shed (top left and left), bare tracks, natural canopy and grass in the middle, and an agroforestry stand to the right.</p>
@@ -170,13 +170,13 @@
   </div>
 </div>
 <p style="margin-top:18px">Green-painted roofs can come close to canopy in mean colour. Texture separates them at once: the canopy's contrast here is about 80 times the roof's. Objects smaller than 16 pixels get neutral texture values.</p>
-<details class="why"><summary>Exactly how Lite Land computes texture</summary>
+<details class="why"><summary>Exactly how Lite Classify computes texture</summary>
 <p>Luminance is 0.299R + 0.587G + 0.114B. Grey levels 1–15 hold the object's pixels; level 0 marks pixels outside the object and is dropped, then the matrix is renormalised so only pairs inside the object count. Pairs are one pixel apart at 0°, 45°, 90° and 135°, counted symmetrically. Contrast, homogeneity and energy are averaged over the four directions. Entropy is computed in bits and summed over the four directions, so its values run about four times a single-direction entropy; the classifier is unaffected by that scale.</p>
 </details>
 
 <h3 id="context">Context and height</h3>
 <p>Two features compare each object with the objects it touches, using a <strong>region adjacency graph</strong> (a list of which objects share a border). An object darker and lower than everything around it is a canopy-gap candidate wherever it sits on a slope.</p>
-<p>A DSM is the height of the top surface, not the ground, so absolute height mixes terrain with the objects on it. <strong>Height above ground</strong> removes the terrain. Lite Land estimates a ground surface from the DSM itself: it takes the lowest value in each ~1 m block, then a <em>morphological opening</em> over 40 m (a moving minimum, then a moving maximum) that removes anything narrower than 40 m, such as crowns and buildings, and smooths the result. Each object's height above that surface is <code>hag_mean</code>. Under closed canopy wider than 40 m the ground estimate rides up on the canopy and heights are underestimated, the usual limit of ground estimation from a DSM alone.</p>
+<p>A DSM is the height of the top surface, not the ground, so absolute height mixes terrain with the objects on it. <strong>Height above ground</strong> removes the terrain. Lite Classify estimates a ground surface from the DSM itself: it takes the lowest value in each ~1 m block, then a <em>morphological opening</em> over 40 m (a moving minimum, then a moving maximum) that removes anything narrower than 40 m, such as crowns and buildings, and smooths the result. Each object's height above that surface is <code>hag_mean</code>. Under closed canopy wider than 40 m the ground estimate rides up on the canopy and heights are underestimated, the usual limit of ground estimation from a DSM alone.</p>
 <div class="strip c3">
   <figure><img src="img/dsm_crop.jpg" alt="DSM heights over the patch"><figcaption><b>DSM</b> <span data-d="dsm_crop.lo" data-fmt="f0"></span>–<span data-d="dsm_crop.hi" data-fmt="f0"></span> m. Terrain and objects mixed together.</figcaption></figure>
   <figure><img src="img/slope_crop.jpg" alt="Slope over the patch"><figcaption><b>Slope</b> 0–60°. Crown sides and roof edges light up.</figcaption></figure>
@@ -184,8 +184,8 @@
 </div>
 
 <h2 id="dinov2"><span class="num">5.4</span>Appearance with DINOv2</h2>
-<p>The 24 features describe each object on its own, and at this scale an object is about the size of part of a crown. Some cover types are defined by their <em>surroundings</em> and <em>pattern</em> instead: a planted coconut stand and natural canopy beside it are both closed, green and tall, but one has regular, evenly spaced crowns and the other does not. To capture that, Lite Land adds a learned description of what each object and its neighbourhood look like.</p>
-<p><strong>DINOv2</strong> (Meta AI, 2023) is a <strong>vision transformer</strong> trained on 142 million images <em>without labels</em>, by learning to give matching descriptions to different crops of the same picture. Lite Land uses its small version, ViT-S/14, as a frozen <strong>feature extractor</strong>: it never trains it, fine-tunes it, or uses it to classify.</p>
+<p>The 24 features describe each object on its own, and at this scale an object is about the size of part of a crown. Some cover types are defined by their <em>surroundings</em> and <em>pattern</em> instead: a planted coconut stand and natural canopy beside it are both closed, green and tall, but one has regular, evenly spaced crowns and the other does not. To capture that, Lite Classify adds a learned description of what each object and its neighbourhood look like.</p>
+<p><strong>DINOv2</strong> (Meta AI, 2023) is a <strong>vision transformer</strong> trained on 142 million images <em>without labels</em>, by learning to give matching descriptions to different crops of the same picture. Lite Classify uses its small version, ViT-S/14, as a frozen <strong>feature extractor</strong>: it never trains it, fine-tunes it, or uses it to classify.</p>
 <figure class="wide">
 <svg viewBox="0 0 1060 250" role="img" aria-label="Each object's 5 m and 10 m patches pass through DINOv2 to 384 numbers, reduced by PCA for Discover and for the classifier" style="width:100%;height:auto;font-family:'Public Sans',sans-serif">
   <defs><marker id="da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#44504a"/></marker></defs>
@@ -224,7 +224,7 @@
     <text x="896" y="180">PCA to 10 per patch:</text><text x="896" y="197">+20 features, optional</text>
   </g>
 </svg>
-<figcaption>How an object gets its appearance description. Lite Land computes it once per segmentation and keeps it in the workspace.</figcaption>
+<figcaption>How an object gets its appearance description. Lite Classify computes it once per segmentation and keeps it in the workspace.</figcaption>
 </figure>
 <ul>
   <li><strong>Two patch sizes, on purpose.</strong> The 5 m patch describes the object and its edge; the 10 m patch describes the stand pattern around it. Both are cut from the orthomosaic on the working grid, centred on the object.</li>
@@ -256,7 +256,7 @@
 <p>In the worked example, two of the seven classes came out of the groups rather than out of a list made in advance: <strong>Agricultural</strong> (planted coconut, banana and fruit trees, distinct from natural canopy) and <strong>Solid waste</strong> (exposed refuse, distinct from the bare soil around it).</p>
 
 <h2 id="rf"><span class="num">5.6</span>Random Forest</h2>
-<p>You label a modest number of example objects per class. Lite Land trains a <strong>Random Forest</strong> of 100 decision trees on their feature lists and asks it to label every object in the scene.</p>
+<p>You label a modest number of example objects per class. Lite Classify trains a <strong>Random Forest</strong> of 100 decision trees on their feature lists and asks it to label every object in the scene.</p>
 <figure class="wide">
 <svg viewBox="0 0 1060 290" role="img" aria-label="Many trees, each trained on a random resample, vote on every object" style="width:100%;height:auto;font-family:'Public Sans',sans-serif">
   <defs><marker id="ra" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#44504a"/></marker></defs>
@@ -295,7 +295,7 @@
   <text x="425" y="280" text-anchor="middle" font-size="12" fill="#76817b">the questions inside each tree are learned from the data; those shown are examples</text>
 </svg>
 </figure>
-<p>Why this and not hand-written rules such as "brightness below 50 means gap"? Rules are clear but brittle: a change in light breaks them, and they do not scale to 44 features and seven classes. A Random Forest learns the combinations for you. Training each tree on a random resample of your examples, with a random subset of features at each split, keeps it from memorising noise. It tolerates correlated features, needs no scaling, works with a few hundred examples, and retrains in seconds. The vote shares also tell Lite Land which objects the model is least sure about, which is how <span class="ui">What to Label Next</span> picks its suggestions.</p>
+<p>Why this and not hand-written rules such as "brightness below 50 means gap"? Rules are clear but brittle: a change in light breaks them, and they do not scale to 44 features and seven classes. A Random Forest learns the combinations for you. Training each tree on a random resample of your examples, with a random subset of features at each split, keeps it from memorising noise. It tolerates correlated features, needs no scaling, works with a few hundred examples, and retrains in seconds. The vote shares also tell Lite Classify which objects the model is least sure about, which is how <span class="ui">What to Label Next</span> picks its suggestions.</p>
 
 <h2 id="separability"><span class="num">5.7</span>Class separability</h2>
 <p>Before you invest in labelling and checking, <span class="ui">Check Class Separability</span> reports whether your training samples can support the class list. For every pair of classes it computes the <strong>Jeffries–Matusita (JM) distance</strong> from the labelled objects: 0 means the two are identical in feature space, 2 means completely distinct (1.9 or more good, 1.7–1.9 fair, below 1.7 poor). It also ranks, for each pair, which single features separate it best, and says so in a sentence.</p>
@@ -376,7 +376,7 @@
 <p>Objects in the worked example average about <span data-d="segmentation.mean_area_m2" data-fmt="f1"></span> m² (<span data-d="segmentation.mean_area_px" data-fmt="int"></span> pixels), so even a 2,000 px sieve changes under 3% of the map and moves accuracy by less than a point either way. The example was assessed with no sieve. Set the sieve for how the map will be used, not to raise the score; a sieve tuned against the reference points is no longer an independent check.</p>
 
 <h2 id="accuracy"><span class="num">5.10</span>Accuracy assessment</h2>
-<p>A map is only as useful as your knowledge of how wrong it is. Lite Land follows standard practice for thematic maps (Congalton and Green; Olofsson et al. 2014):</p>
+<p>A map is only as useful as your knowledge of how wrong it is. Lite Classify follows standard practice for thematic maps (Congalton and Green; Olofsson et al. 2014):</p>
 <ul>
   <li><strong>A probability sample.</strong> Points are placed at random, by a design you choose, so every part of the map has a known chance of being checked. Training objects are kept out.</li>
   <li><strong>Blind labelling.</strong> You label each point on the raw image, with the classification hidden, so the model's answer cannot sway you.</li>
@@ -400,9 +400,9 @@
     <tr><td><strong>Stratified by map class</strong></td><td>A minimum number of points in each map class (the strata), the rest by area share</td><td>Usable per-class figures for small classes</td><td>Counts over-weight small classes; use the area-weighted estimates</td></tr>
   </tbody>
 </table></div>
-<p>Under a stratified design, small classes are sampled at much higher rates than large ones, so a share of points is not a share of the map. Lite Land therefore also <strong>weights each stratum by its mapped area</strong> and reports area-weighted overall, user's and producer's accuracy, the estimated area of each class, and 95% confidence intervals (Olofsson et al. 2014). The strata are the map classes <em>at the time the points were drawn</em>; if you later merge or rename classes, the estimates still use the original strata (Stehman 2014). That is what happened in the worked example: points were drawn on a nine-class map (broadleaf trees, coconut, banana, brush and the rest) and assessed after merging to seven.</p>
+<p>Under a stratified design, small classes are sampled at much higher rates than large ones, so a share of points is not a share of the map. Lite Classify therefore also <strong>weights each stratum by its mapped area</strong> and reports area-weighted overall, user's and producer's accuracy, the estimated area of each class, and 95% confidence intervals (Olofsson et al. 2014). The strata are the map classes <em>at the time the points were drawn</em>; if you later merge or rename classes, the estimates still use the original strata (Stehman 2014). That is what happened in the worked example: points were drawn on a nine-class map (broadleaf trees, coconut, banana, brush and the rest) and assessed after merging to seven.</p>
 <p>The worked example's points give <span data-d="final.oa" data-fmt="pct"></span> from raw counts and <span data-d="final.oa_aw" data-fmt="pct"></span> ± <span data-d="final.oa_aw_ci" data-mul="100" data-fmt="f1"></span> area-weighted. The gap is the extra weight the design put on the small, difficult classes. The full matrix is in <a href="workflow.html#acc-read">Part C, 11.5</a>.</p>
-<div class="warn"><p><strong>Reference data is not ground truth.</strong> Points you label by eye from the orthomosaic are high-confidence <em>reference data</em>. Only points checked on the ground are <em>ground truth</em>. Where interpretation is hard, as for planted versus natural crowns, the interpreter's errors resemble the model's. Lite Land's report records the source of every point and says so in its footnote.</p></div>
+<div class="warn"><p><strong>Reference data is not ground truth.</strong> Points you label by eye from the orthomosaic are high-confidence <em>reference data</em>. Only points checked on the ground are <em>ground truth</em>. Where interpretation is hard, as for planted versus natural crowns, the interpreter's errors resemble the model's. Lite Classify's report records the source of every point and says so in its footnote.</p></div>
 
 <nav class="pager" aria-label="Previous and next part">
   <a href="index.html"><span class="k">← Part A</span><b>Getting started</b></a>
@@ -410,7 +410,7 @@
 </nav>
 </main>
 </div>
-<footer class="foot">Lite Land User Manual · by LeoBar · references for the methods on this page are listed in <a href="reference.html#refs">Part D, 16</a>.</footer>
+<footer class="foot">Lite Classify User Manual · by LeoBar · references for the methods on this page are listed in <a href="reference.html#refs">Part D, 16</a>.</footer>
 <script data-goatcounter="https://liteland.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 <script src="manual_data.js"></script>

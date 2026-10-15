@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lite Land User Manual</title>
+<title>Lite Classify User Manual</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-<link rel="icon" type="image/png" href="img/brand/lite_land_64.png">
-<link rel="apple-touch-icon" href="img/brand/lite_land_180.png">
+<link rel="icon" type="image/png" href="img/brand/liteclassify_64.png">
+<link rel="apple-touch-icon" href="img/brand/liteclassify_180.png">
 <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -16,14 +16,14 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Land</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
         <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
       <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
     </div>
   </div>
   <div class="topbar-inner">
-  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/lite_land_64.png" alt="" width="26" height="26"><span>Lite Land <span class="brand-sub">Manual</span></span></a>
+  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/liteclassify_64.png" alt="" width="26" height="26"><span>Lite Classify <span class="brand-sub">Manual</span></span></a>
   <nav class="parts" aria-label="Manual parts">
     <a href="index.html" aria-current="page"><span>A</span>Getting started</a>
     <a href="concepts.html"><span>B</span>How it works</a>
@@ -52,15 +52,15 @@
 <main>
 <section class="hero">
   <div class="lockup">
-    <img src="img/brand/lite_land_256.png" alt="Lite Land icon: a white quadcopter over orange hexagonal cells" width="88" height="88">
+    <img src="img/brand/liteclassify_256.png" alt="Lite Classify icon: a white quadcopter over orange hexagonal cells" width="88" height="88">
     <div>
-      <p class="lockup-name">Lite Land</p>
+      <p class="lockup-name">Lite Classify</p>
       <p class="lockup-by">by LeoBar · a lightweight desktop app for object-based land-cover mapping of drone orthomosaics</p>
     </div>
   </div>
   <p class="eyebrow">User manual</p>
   <h1>Turn a drone orthomosaic into a checked land-cover map</h1>
-  <p class="lead">Lite Land splits an aerial image into objects, describes each one by its colour, texture, shape, height and appearance, helps you find the classes the scene really contains, learns those classes from examples you click, and checks the finished map against an independent sample. This manual walks one real <span data-d="grid.area_ha" data-fmt="f1"></span>-hectare survey through every step: <span data-d="segmentation.segments" data-fmt="int"></span> objects, seven classes, <span data-d="training.total" data-fmt="int"></span> training objects and <span data-d="final.n" data-fmt="int"></span> independently labelled check points.</p>
+  <p class="lead">Lite Classify splits an aerial image into objects, describes each one by its colour, texture, shape, height and appearance, helps you find the classes the scene really contains, learns those classes from examples you click, and checks the finished map against an independent sample. This manual walks one real <span data-d="grid.area_ha" data-fmt="f1"></span>-hectare survey through every step: <span data-d="segmentation.segments" data-fmt="int"></span> objects, seven classes, <span data-d="training.total" data-fmt="int"></span> training objects and <span data-d="final.n" data-fmt="int"></span> independently labelled check points.</p>
   <div class="hero-strip">
     <figure><img src="img/view_raw.jpg" alt="Orthomosaic crop of a road junction, roofs, bare ground and canopy"><figcaption><b>01</b>Orthomosaic</figcaption></figure>
     <figure><img src="img/view_segmented.jpg" alt="The same crop split into segments, each filled with its mean colour"><figcaption><b>02</b>Objects</figcaption></figure>
@@ -85,8 +85,8 @@
 </section>
 
 <h2 id="welcome"><span class="num">1</span>Welcome</h2>
-<p>Lite Land is a desktop tool for <strong>geographic object-based image analysis (GEOBIA)</strong> of very-high-resolution drone imagery. It was built to map canopy gaps, restoration patches and land use in tropical landscapes, and it works for any cover types you can recognise by eye in an RGB orthomosaic: canopy, plantations, grass, bare ground, roads, buildings, water.</p>
-<p><strong>Lite Land picks up where Lite Flight leaves off.</strong> Plan and fly the survey with Lite Flight, process the photos into an orthomosaic and surface model in your photogrammetry software, then bring both into Lite Land to map them. It is one self-contained program that runs offline on a single workstation, with no Python, GIS software, account or internet connection needed.</p>
+<p>Lite Classify is a desktop tool for <strong>geographic object-based image analysis (GEOBIA)</strong> of very-high-resolution drone imagery. It was built to map canopy gaps, restoration patches and land use in tropical landscapes, and it works for any cover types you can recognise by eye in an RGB orthomosaic: canopy, plantations, grass, bare ground, roads, buildings, water.</p>
+<p><strong>Lite Classify picks up where Lite Flight leaves off.</strong> Plan and fly the survey with Lite Flight, process the photos into an orthomosaic and surface model in your photogrammetry software, then bring both into Lite Classify to map them. It is one self-contained program that runs offline on a single workstation, with no Python, GIS software, account or internet connection needed.</p>
 <p>You work through four tabs, left to right. Each tab hands its result to the next.</p>
 
 <figure class="wide">
@@ -144,24 +144,24 @@
 <p>Computing is the quick part. On the worked example, segmentation and feature measurement for <span data-d="segmentation.segments" data-fmt="int"></span> objects ran in minutes on a desktop GPU. Most of your time goes into reviewing groups, labelling examples and checking the result.</p>
 
 <h2 id="install"><span class="num">2</span>Installing and launching</h2>
-<div class="note"><p><strong>Coming soon.</strong> Lite Land will be released as free, open-source software under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). The program and its source code are not available for download yet; this page describes how installation will work. For early access, write to <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p></div>
-<p>Lite Land ships as a self-contained Windows program; you do not need Python or any GIS software installed.</p>
+<div class="note"><p><strong>Coming soon.</strong> Lite Classify will be released as free, open-source software under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). The program and its source code are not available for download yet; this page describes how installation will work. For early access, write to <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p></div>
+<p>Lite Classify ships as a self-contained Windows program; you do not need Python or any GIS software installed.</p>
 <ol class="steps">
   <li><strong>Download</strong> the release zip (available at release).</li>
-  <li><strong>Unzip the whole folder</strong>, for example to <code>C:\Tools\LiteLand</code>. It holds the program, an <code>_internal</code> folder of libraries, and the DINOv2 model weights in <code>_internal\models</code>. Keep them together; the program will not start if the exe is moved out on its own.</li>
-  <li><strong>Double-click the program</strong> (<code>PyOBIA.exe</code> in current builds). The first launch can be slow while Windows loads the libraries; later launches are quicker.</li>
+  <li><strong>Unzip the whole folder</strong>, for example to <code>C:\Tools\LiteClassify</code>. It holds the program, an <code>_internal</code> folder of libraries, and the DINOv2 model weights in <code>_internal\models</code>. Keep them together; the program will not start if the exe is moved out on its own.</li>
+  <li><strong>Double-click the program</strong> (<code>LiteClassify.exe</code>). A splash screen shows while the libraries load. The first launch can be slow while Windows loads the libraries; later launches are quicker.</li>
   <li><strong>Check the console</strong> at the bottom of the window. It should say <code>Load an image to begin.</code> Every action the app takes is logged there, including errors.</li>
   <li><strong>Check the Segmentation Engine box</strong> on Tab 1. If <span class="ui">GPU</span> is selectable, an NVIDIA CUDA graphics card was found; segmentation and the DINOv2 appearance features will run on it. If it is greyed out, everything runs on the CPU, just slower.</li>
 </ol>
 <details class="why"><summary>Running from source instead</summary>
-<p>Once the source is published: clone the repository, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python obia_app.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, follow the note at the top of <code>requirements.txt</code>. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
+<p>Once the source is published: clone the repository, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python liteclassify.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, follow the note at the top of <code>requirements.txt</code>. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
 </details>
 <div class="table-wrap"><table>
   <thead><tr><th>Requirement</th><th>Needed</th><th>Notes</th></tr></thead>
   <tbody>
     <tr><td>Operating system</td><td>Windows 10 or 11, 64-bit</td><td>On a fresh machine you may need the Microsoft Visual C++ Redistributable (x64).</td></tr>
     <tr><td>Graphics card</td><td>Optional</td><td>An NVIDIA GPU with CUDA speeds up segmentation (about 10× in our tests) and the DINOv2 appearance features.</td></tr>
-    <tr><td>Memory (RAM)</td><td>16 GB or more recommended</td><td>Lite Land checks memory before loading, resampling and segmenting, and suggests a coarser resolution or tiling when a step would not fit. Very large mosaics are read at reduced resolution on load.</td></tr>
+    <tr><td>Memory (RAM)</td><td>16 GB or more recommended</td><td>Lite Classify checks memory before loading, resampling and segmenting, and suggests a coarser resolution or tiling when a step would not fit. Very large mosaics are read at reduced resolution on load.</td></tr>
     <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it. The worked example's workspace is about 0.9 GB.</td></tr>
   </tbody>
 </table></div>
@@ -182,7 +182,7 @@
   <figure><img src="img/sample_ortho.jpg" alt="The full survey orthomosaic"><figcaption><b>Orthomosaic</b> True colour, as the camera saw it. The road runs from the south-west to the settlement in the north; the pale patch on the east side is the disposal site.</figcaption></figure>
   <figure><img src="img/sample_dsm.jpg" alt="The DSM shown as coloured, hill-shaded elevation"><figcaption><b>Digital Surface Model</b> Height of the top surface (canopy, roofs, ground), shaded from the north-west.</figcaption></figure>
 </div>
-<p>The orthomosaic was captured at 3.3 cm per pixel. The worked example segments it on a 10 cm working grid, so objects stay crown-sized, but measures each object's colour and texture from the full 3.3 cm pixels (<a href="concepts.html#feature-res">Part B, 5.3</a>). The DSM comes from the same photogrammetry run on a coarser grid; Lite Land places it by its coordinates, so the two need not share a pixel size.</p>
+<p>The orthomosaic was captured at 3.3 cm per pixel. The worked example segments it on a 10 cm working grid, so objects stay crown-sized, but measures each object's colour and texture from the full 3.3 cm pixels (<a href="concepts.html#feature-res">Part B, 5.3</a>). The DSM comes from the same photogrammetry run on a coarser grid; Lite Classify places it by its coordinates, so the two need not share a pixel size.</p>
 <figure>
   <img src="img/sample_inset_native.jpg" alt="A 30 by 30 metre patch at full 3.3 cm resolution showing roofs and the crowns beside them" style="max-width:min(520px,100%)">
   <figcaption><b>What 3.3 cm resolves.</b> A 30 × 30 m patch at full resolution: roof sheets, gutters and single fronds are visible. At this detail a segmenter outlines leaves, which is why the example segments at 10 cm.</figcaption>
@@ -242,11 +242,11 @@
 </table></div>
 
 <nav class="pager" aria-label="Next part">
-  <a class="next" href="concepts.html"><span class="k">Part B →</span><b>How Lite Land works</b></a>
+  <a class="next" href="concepts.html"><span class="k">Part B →</span><b>How Lite Classify works</b></a>
 </nav>
 </main>
 </div>
-<footer class="foot">Lite Land User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
+<footer class="foot">Lite Classify User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
 <script data-goatcounter="https://liteland.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 <script src="manual_data.js"></script>

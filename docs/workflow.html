@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Lite Land Manual · Workflow</title>
+<title>Lite Classify Manual · Workflow</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
-<link rel="icon" type="image/png" href="img/brand/lite_land_64.png">
-<link rel="apple-touch-icon" href="img/brand/lite_land_180.png">
+<link rel="icon" type="image/png" href="img/brand/liteclassify_64.png">
+<link rel="apple-touch-icon" href="img/brand/liteclassify_180.png">
 <link rel="stylesheet" href="manual.css">
 </head>
 <body>
@@ -16,14 +16,14 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Land</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
         <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
       <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
     </div>
   </div>
   <div class="topbar-inner">
-  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/lite_land_64.png" alt="" width="26" height="26"><span>Lite Land <span class="brand-sub">Manual</span></span></a>
+  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/liteclassify_64.png" alt="" width="26" height="26"><span>Lite Classify <span class="brand-sub">Manual</span></span></a>
   <nav class="parts" aria-label="Manual parts">
     <a href="index.html"><span>A</span>Getting started</a>
     <a href="concepts.html"><span>B</span>How it works</a>
@@ -101,9 +101,9 @@
 <ol class="steps">
   <li>On <strong>Tab 1</strong>, under <span class="ui">Input Data</span>, click <span class="ui">Browse</span> next to <em>Orthomosaic</em> (or use <em>Import › Orthomosaic</em>) and pick the GeoTIFF. You can also paste a path and press <kbd>Enter</kbd>.</li>
   <li>The image fills the viewer. The line under the resample slider shows its native resolution; for the worked example, 3.304 cm/px and 32,090 × 28,875 px.</li>
-  <li><strong>Very large images load at reduced resolution.</strong> Above about 400 megapixels (less if memory is short), Lite Land reads the file straight at a coarser resolution, using the file's own overviews, instead of filling memory. The console says so, and the resample controls start at the loaded resolution. The worked example (0.93 gigapixels) loads this way.</li>
+  <li><strong>Very large images load at reduced resolution.</strong> Above about 400 megapixels (less if memory is short), Lite Classify reads the file straight at a coarser resolution, using the file's own overviews, instead of filling memory. The console says so, and the resample controls start at the loaded resolution. The worked example (0.93 gigapixels) loads this way.</li>
 </ol>
-<p class="small">Lite Land reads the first three bands as red, green and blue, and uses the file's mask (or alpha band) to ignore empty corners of rotated mosaics. Building overviews (pyramids) in your photogrammetry software or GIS makes large files load faster.</p>
+<p class="small">Lite Classify reads the first three bands as red, green and blue, and uses the file's mask (or alpha band) to ignore empty corners of rotated mosaics. Building overviews (pyramids) in your photogrammetry software or GIS makes large files load faster.</p>
 
 <h3 id="dsm">6.2 Add a DSM (optional, recommended)</h3>
 <ol class="steps">
@@ -130,7 +130,7 @@
 <ol class="steps">
   <li>Type a <span class="ui">Target Resolution</span> of <strong>10 cm/px</strong>, or move the <span class="ui">Resample Scale</span> slider. The cm/px box appears only for projected coordinate systems such as UTM.</li>
   <li>Check the preview line under the slider: it shows the target resolution and the new image size, 10,603 × 9,541 px for the example.</li>
-  <li>Click <span class="ui">Apply Resample</span>. Lite Land checks free memory first and suggests a coarser resolution if the result would not fit.</li>
+  <li>Click <span class="ui">Apply Resample</span>. Lite Classify checks free memory first and suggests a coarser resolution if the result would not fit.</li>
 </ol>
 <div class="warn"><p><strong>Resampling clears downstream work.</strong> The segmentation, Discover groups, the classification and all training samples are tied to the old pixel grid and are cleared. Your class names and colours are kept, and so are accuracy points (they are stored in map coordinates). Resample first, then segment.</p></div>
 
@@ -154,7 +154,8 @@
 <div class="table-wrap"><table>
   <thead><tr><th>Control</th><th>Range</th><th>Default</th><th>Worked example</th><th>Start here</th></tr></thead>
   <tbody>
-    <tr><td>Num Segments</td><td class="mono">100–2,000,000</td><td class="mono">5,000</td><td class="mono">60,000</td><td>Aim for objects of a few m² to a few tens of m². The line under the box shows the resulting object size on the ground.</td></tr>
+    <tr><td>Object Size</td><td class="mono">0.5–10,000 m²</td><td class="mono">10 m²</td><td class="mono">~8.6 m²</td><td>The size of one object on the ground. Aim for a few m² to a few tens of m², and small enough that the narrowest thing you map gets objects of its own. Sets Num Segments from the image's valid area.</td></tr>
+    <tr><td>Num Segments</td><td class="mono">100–2,000,000</td><td>from Object Size</td><td class="mono">60,000</td><td>The same choice as a count. Edit either box; the other follows. Whichever you set last is kept when you resample.</td></tr>
     <tr><td>Compactness</td><td class="mono">0.01–1.00</td><td class="mono">0.15</td><td class="mono">0.15</td><td>Keep 0.15. Lower only if segments cut across clear edges.</td></tr>
     <tr><td>Sigma (Smoothing)</td><td class="mono">0–10</td><td class="mono">2.5</td><td class="mono">2.5</td><td>Keep 2.5. Raise if segments look ragged or grid-like.</td></tr>
     <tr><td>Colour/texture at</td><td class="mono">native–working</td><td>working grid</td><td class="mono">3.30 cm/px</td><td>Set to the native resolution when the image allows: texture then comes from full detail (<a href="concepts.html#feature-res">Part B, 5.3</a>). Shown for images in projected coordinates.</td></tr>
@@ -162,8 +163,8 @@
   </tbody>
 </table></div>
 <ol class="steps">
-  <li>Set the controls above. Read the plan line under Num Segments: it gives the object size and whether the run will be done in one go or as <em>N tiles</em>.</li>
-  <li>Click <span class="ui">Run Segmentation</span>. Lite Land checks memory first. The console counts through the steps: segmentation (tile by tile if needed), display layers, polygons, features, neighbour features and height above ground.</li>
+  <li>Set <span class="ui">Object Size</span> (or type a segment count) and the other controls above. Read the plan line under Num Segments: it confirms the object size in m² and pixels, and whether the run will be done in one go or as <em>N tiles</em>.</li>
+  <li>Click <span class="ui">Run Segmentation</span>. Lite Classify checks memory first. The console counts through the steps: segmentation (tile by tile if needed), display layers, polygons, features, neighbour features and height above ground.</li>
   <li>When it finishes, the console prints the object count and time, and the app opens Tab 2.</li>
   <li>Return to Tab 1 and tick <span class="ui">Show Segment Boundaries</span> to inspect the result over the image.</li>
 </ol>
@@ -325,12 +326,12 @@
 </ol>
 
 <h3 id="mmu">10.5 Set a minimum mapping unit</h3>
-<p>Under <span class="ui">Post-Classification Generalization</span>, set <span class="ui">MMU (px)</span> from 0 to 2,000. Patches of one class smaller than this are absorbed by the class around them. The map updates when you release the slider or leave the box. To turn pixels into area, multiply by the pixel area: at 10 cm, 1,000 px is 10 m². The example used 0; see <a href="concepts.html#sieve">Part B, 5.9</a>.</p>
+<p>Under <span class="ui">Post-Classification Generalization</span>, set the <span class="ui">MMU</span> either in pixels (0–2,000) or as an area in m²; the two boxes stay in step with the working grid (at 10 cm, 1,000 px = 10 m²). Patches of one class smaller than this are absorbed by the class around them. The map updates when you release the slider or leave a box. The example used 0; see <a href="concepts.html#sieve">Part B, 5.9</a>.</p>
 
 <h3 id="export">10.6 Export and save</h3>
 <ol class="steps">
   <li>Click <span class="ui">Export Final Classified TIF</span>. The dialog suggests <code>&lt;name&gt;_classified.tif</code> in the workspace folder.</li>
-  <li>Lite Land writes a single-band GeoTIFF (value 1 = first class in the list, 2 = second, …, 0 = no data) with your colours embedded, plus a <code>.qml</code> style file of the same name for QGIS.</li>
+  <li>Lite Classify writes a single-band GeoTIFF (value 1 = first class in the list, 2 = second, …, 0 = no data) with your colours embedded, plus a <code>.qml</code> style file of the same name for QGIS.</li>
   <li><span class="ui">File › Save Workspace</span> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) keeps the session: segments, features, appearance features, groups, classes, training samples, the classification, accuracy points and iterations.</li>
 </ol>
 <div class="note"><p><strong>Export again after you retrain.</strong> The exported GeoTIFF is a snapshot. Saving the workspace does not update it; the accuracy assessment, however, always uses the current map.</p></div>
@@ -354,7 +355,7 @@
 <p>Under <span class="ui">Ground Truth Source</span>, pick one:</p>
 <ul>
   <li><strong>Import Ground Truth CSV</strong>: field points you collected. Browse to the CSV; tick <span class="ui">Also generate expert-visual points</span> to add photo-interpreted points on top.</li>
-  <li><strong>No Ground Truth Available (Generate Expert Points)</strong>: Lite Land places random points for you to label from the image.</li>
+  <li><strong>No Ground Truth Available (Generate Expert Points)</strong>: Lite Classify places random points for you to label from the image.</li>
 </ul>
 <p>A ground-truth CSV needs an x column, a y column and a class column, with coordinates in the orthomosaic's own coordinate system. Header names are matched loosely (x/lon/easting, y/lat/northing, class/reference_class/label); class names must match Tab 3 exactly, or the import stops and lists the mismatches.</p>
 
@@ -375,7 +376,7 @@
 <div class="note"><p><strong>Label what is under the point, not what is nearby.</strong> If the point sits on a roof edge under an overhanging crown, label what covers that spot from above. If you truly cannot tell, delete the point rather than guess. Ideally, someone other than the person who picked the training samples does the labelling.</p></div>
 
 <h3 id="acc-run">11.4 Run the assessment</h3>
-<p>Click <span class="ui">Run Accuracy Assessment</span>. Unlabelled points are left out (the warning says how many). Lite Land reads each point's class from the current map with the sieve applied, the same map Export writes. The results window opens beside the main window, so you can keep working while it is open. It writes to the workspace folder:</p>
+<p>Click <span class="ui">Run Accuracy Assessment</span>. Unlabelled points are left out (the warning says how many). Lite Classify reads each point's class from the current map with the sieve applied, the same map Export writes. The results window opens beside the main window, so you can keep working while it is open. It writes to the workspace folder:</p>
 <ul>
   <li><code>accuracy_report.csv</code>: the error matrix with totals, user's and producer's accuracy, overall accuracy, sample size and a source note; for a stratified sample, also the area-weighted estimates, estimated class areas and 95% confidence intervals.</li>
   <li><code>accuracy_matrix.png</code>: the matrix as a figure.</li>
@@ -430,12 +431,12 @@
 </ul>
 
 <nav class="pager" aria-label="Previous and next part">
-  <a href="concepts.html"><span class="k">← Part B</span><b>How Lite Land works</b></a>
+  <a href="concepts.html"><span class="k">← Part B</span><b>How Lite Classify works</b></a>
   <a class="next" href="reference.html"><span class="k">Part D →</span><b>Reference</b></a>
 </nav>
 </main>
 </div>
-<footer class="foot">Lite Land User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
+<footer class="foot">Lite Classify User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
 <script data-goatcounter="https://liteland.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 <script src="manual_data.js"></script>
