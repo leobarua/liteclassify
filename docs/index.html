@@ -16,10 +16,10 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Land v1.3 Trial</b> <span>· for Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p><b>Lite Land</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
         <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
-      <a class="getbar-btn" data-goatcounter-click="download-trial" data-goatcounter-title="Download Lite Land trial (top bar)" href="https://drive.google.com/file/d/1JxOnxnY069Mfg6nPAA1eiSF7T0b4u91c/view?usp=drive_link" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m6 11 6 6 6-6"/><path d="M4 21h16"/></svg>Download<span class="long"> Trial (2.2 GB)</span></a>
+      <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
     </div>
   </div>
   <div class="topbar-inner">
@@ -38,12 +38,11 @@
   <ol>
     <li><a href="#welcome"><span class="n">1</span>Welcome</a></li>
     <li><a href="#install"><span class="n">2</span>Installing and launching</a></li>
-    <li><a href="#sample"><span class="n">3</span>The sample dataset</a></li>
+    <li><a href="#sample"><span class="n">3</span>The worked example</a></li>
     <li><a href="#tour"><span class="n">4</span>A tour of the interface</a>
       <ol>
-        <li><a href="#tour-tab1">Tab 1</a></li>
-        <li><a href="#tour-tab2">Tab 2</a></li>
-        <li><a href="#tour-tab3">Tab 3</a></li>
+        <li><a href="#menus">Menus</a></li>
+        <li><a href="#tour-tabs">The four tabs</a></li>
         <li><a href="#controls">Mouse and keys</a></li>
       </ol>
     </li>
@@ -61,250 +60,184 @@
   </div>
   <p class="eyebrow">User manual</p>
   <h1>Turn a drone orthomosaic into a checked land-cover map</h1>
-  <p class="lead">Lite Land splits an aerial image into objects, describes each object with up to 23 measurements, learns your classes from examples you click, and then checks the finished map against an independent sample. This manual walks one real 22-hectare survey through every step, using a complete saved session: 340 labelled training objects and 100 independently labelled check points.</p>
+  <p class="lead">Lite Land splits an aerial image into objects, describes each one by its colour, texture, shape, height and appearance, helps you find the classes the scene really contains, learns those classes from examples you click, and checks the finished map against an independent sample. This manual walks one real <span data-d="grid.area_ha" data-fmt="f1"></span>-hectare survey through every step: <span data-d="segmentation.segments" data-fmt="int"></span> objects, seven classes, <span data-d="training.total" data-fmt="int"></span> training objects and <span data-d="final.n" data-fmt="int"></span> independently labelled check points.</p>
   <div class="hero-strip">
-    <figure><img src="img/view_raw.jpg" alt="Orthomosaic crop of trees, a field, a road and roofs"><figcaption><b>01</b>Orthomosaic</figcaption></figure>
+    <figure><img src="img/view_raw.jpg" alt="Orthomosaic crop of a road junction, roofs, bare ground and canopy"><figcaption><b>01</b>Orthomosaic</figcaption></figure>
     <figure><img src="img/view_segmented.jpg" alt="The same crop split into segments, each filled with its mean colour"><figcaption><b>02</b>Objects</figcaption></figure>
-    <figure><img src="img/view_classified.png" alt="The same crop classified into five land-cover classes"><figcaption><b>03</b>Classified</figcaption></figure>
+    <figure><img src="img/view_classified.png" alt="The same crop classified into land-cover classes"><figcaption><b>03</b>Classified</figcaption></figure>
     <figure><img src="img/view_points.jpg" alt="Reference points over the crop, coloured by their labelled class"><figcaption><b>04</b>Checked</figcaption></figure>
   </div>
   <ul class="classes" aria-label="Classes used in the worked example">
+    <li><i style="background:var(--c-canopy)"></i>Natural canopy</li>
+    <li><i style="background:var(--c-agri)"></i>Agricultural</li>
     <li><i style="background:var(--c-grass)"></i>Grass</li>
-    <li><i style="background:var(--c-trees)"></i>Trees</li>
-    <li><i style="background:var(--c-bare)"></i>Bare</li>
-    <li><i style="background:var(--c-imp)"></i>Impervious</li>
-    <li><i style="background:var(--c-bld)"></i>Building</li>
+    <li><i style="background:var(--c-bare)"></i>Bare soil</li>
+    <li><i style="background:var(--c-waste)"></i>Solid waste</li>
+    <li><i style="background:var(--c-built)"></i>Built-up</li>
+    <li><i style="background:var(--c-stream)"></i>Stream</li>
   </ul>
   <div class="cards">
-    <a class="card" href="#welcome"><span class="k">Part A</span><h3>Getting started</h3><p>Launch the app, meet the sample data, learn the window.</p></a>
-    <a class="card" href="concepts.html"><span class="k">Part B</span><h3>How it works</h3><p>Segments, the 23 measurements, Random Forest, accuracy.</p></a>
-    <a class="card" href="workflow.html"><span class="k">Part C</span><h3>Workflow</h3><p>Every control in the three tabs, step by step.</p></a>
-    <a class="card" href="reference.html"><span class="k">Part D</span><h3>Reference</h3><p>Files, parameters, troubleshooting, glossary.</p></a>
+    <a class="card" href="#welcome"><span class="k">Part A</span><h3>Getting started</h3><p>Install, meet the worked example, learn the window.</p></a>
+    <a class="card" href="concepts.html"><span class="k">Part B</span><h3>How it works</h3><p>Segments, the 24 measurements, DINOv2 appearance, class discovery, Random Forest, accuracy.</p></a>
+    <a class="card" href="workflow.html"><span class="k">Part C</span><h3>Workflow</h3><p>Every control in the four tabs, step by step.</p></a>
+    <a class="card" href="reference.html"><span class="k">Part D</span><h3>Reference</h3><p>Files, parameters, troubleshooting, glossary, licence and citation.</p></a>
   </div>
 </section>
 
 <h2 id="welcome"><span class="num">1</span>Welcome</h2>
-<p>Lite Land is a desktop tool for <strong>object-based image analysis (OBIA)</strong> of very-high-resolution drone imagery. It was built to map canopy gaps in tropical forest, and it works for any land-cover classes you can recognise by eye in an RGB orthomosaic: trees, grass, bare ground, roads, buildings, water.</p>
-<p><strong>Lite Land picks up where Lite Flight leaves off.</strong> Plan and fly the survey with Lite Flight, process the photos into an orthomosaic and surface model in your photogrammetry software, then bring both into Lite Land to map them. Like Lite Flight, it is lightweight: one self-contained program that runs offline on a single workstation, with no Python, GIS software or account needed.</p>
-<p>You work through three tabs, left to right. Each tab hands its result to the next.</p>
+<p>Lite Land is a desktop tool for <strong>geographic object-based image analysis (GEOBIA)</strong> of very-high-resolution drone imagery. It was built to map canopy gaps, restoration patches and land use in tropical landscapes, and it works for any cover types you can recognise by eye in an RGB orthomosaic: canopy, plantations, grass, bare ground, roads, buildings, water.</p>
+<p><strong>Lite Land picks up where Lite Flight leaves off.</strong> Plan and fly the survey with Lite Flight, process the photos into an orthomosaic and surface model in your photogrammetry software, then bring both into Lite Land to map them. It is one self-contained program that runs offline on a single workstation, with no Python, GIS software, account or internet connection needed.</p>
+<p>You work through four tabs, left to right. Each tab hands its result to the next.</p>
 
 <figure class="wide">
-<svg viewBox="0 0 1060 300" role="img" aria-label="Six stages across three tabs turn an orthomosaic into a checked map" style="width:100%;height:auto;font-family:'Public Sans',sans-serif">
+<svg viewBox="0 0 1076 300" role="img" aria-label="Seven stages across four tabs turn an orthomosaic into a checked map" style="width:100%;height:auto;font-family:'Public Sans',sans-serif">
   <defs><marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#44504a"/></marker></defs>
-  <g font-family="Archivo, sans-serif" font-weight="700" font-size="13" letter-spacing="1.2" fill="#76817b">
+  <g font-family="Archivo, sans-serif" font-weight="700" font-size="12.5" letter-spacing="1.1" fill="#76817b">
     <text x="8" y="18">TAB 1 · LOAD, VIEW &amp; SEGMENT</text>
-    <text x="530" y="18">TAB 2 · CLASSIFICATION</text>
-    <text x="890" y="18">TAB 3 · ACCURACY</text>
+    <text x="470" y="18">TAB 2 · DISCOVER</text>
+    <text x="624" y="18">TAB 3 · CLASSIFICATION</text>
+    <text x="932" y="18">TAB 4 · ACCURACY</text>
   </g>
-  <g stroke="#dfe4de" stroke-width="1"><line x1="8" x2="512" y1="28" y2="28"/><line x1="530" x2="872" y1="28" y2="28"/><line x1="890" x2="1052" y1="28" y2="28"/></g>
+  <g stroke="#dfe4de" stroke-width="1"><line x1="8" x2="452" y1="28" y2="28"/><line x1="470" x2="606" y1="28" y2="28"/><line x1="624" x2="914" y1="28" y2="28"/><line x1="932" x2="1068" y1="28" y2="28"/></g>
   <g fill="#fff" stroke="#44504a" stroke-width="1.25">
-    <rect x="8" y="48" width="150" height="150" rx="10"/>
-    <rect x="184" y="48" width="150" height="150" rx="10"/>
-    <rect x="360" y="48" width="152" height="150" rx="10" fill="#fdf6dc" stroke="#c99a0e" stroke-width="2"/>
-    <rect x="530" y="48" width="160" height="150" rx="10"/>
-    <rect x="712" y="48" width="160" height="150" rx="10"/>
-    <rect x="890" y="48" width="162" height="150" rx="10"/>
+    <rect x="8" y="48" width="136" height="150" rx="10"/>
+    <rect x="162" y="48" width="136" height="150" rx="10"/>
+    <rect x="316" y="48" width="136" height="150" rx="10" fill="#fdf6dc" stroke="#c99a0e" stroke-width="2"/>
+    <rect x="470" y="48" width="136" height="150" rx="10" stroke-dasharray="5 4"/>
+    <rect x="624" y="48" width="136" height="150" rx="10"/>
+    <rect x="778" y="48" width="136" height="150" rx="10"/>
+    <rect x="932" y="48" width="136" height="150" rx="10"/>
   </g>
   <g fill="none" stroke="#44504a" stroke-width="1.25">
-    <path d="M158 123H180" marker-end="url(#pa)"/><path d="M334 123H356" marker-end="url(#pa)"/><path d="M512 123H526" marker-end="url(#pa)"/>
-    <path d="M690 123H708" marker-end="url(#pa)"/><path d="M872 123H886" marker-end="url(#pa)"/>
-    <path d="M792 198V236H610V202" marker-end="url(#pa)"/>
+    <path d="M144 123H158" marker-end="url(#pa)"/><path d="M298 123H312" marker-end="url(#pa)"/><path d="M452 123H466" marker-end="url(#pa)"/>
+    <path d="M606 123H620" marker-end="url(#pa)"/><path d="M760 123H774" marker-end="url(#pa)"/><path d="M914 123H928" marker-end="url(#pa)"/>
+    <path d="M846 198V236H692V202" marker-end="url(#pa)"/>
   </g>
-  <g font-size="12.5" fill="#44504a">
-    <text x="22" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">01</text>
-    <text x="22" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Prepare</text>
-    <text x="22" y="124">Load ortho + DSM</text><text x="22" y="142">Colour-correct</text><text x="22" y="160">Resample</text>
-    <text x="198" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">02</text>
-    <text x="198" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Segment</text>
-    <text x="198" y="124">SLIC groups pixels</text><text x="198" y="142">into objects</text><text x="198" y="160">(GPU or CPU)</text>
-    <text x="374" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">03</text>
-    <text x="374" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Describe</text>
-    <text x="374" y="124">19 measurements per</text><text x="374" y="142">object, 23 with a DSM</text><text x="374" y="160">(automatic)</text>
-    <text x="544" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">04</text>
-    <text x="544" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Label &amp; train</text>
-    <text x="544" y="124">Click example objects</text><text x="544" y="142">per class, train a</text><text x="544" y="160">Random Forest</text>
-    <text x="726" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">05</text>
-    <text x="726" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Classify</text>
-    <text x="726" y="124">Predict every object,</text><text x="726" y="142">sieve small patches,</text><text x="726" y="160">export GeoTIFF</text>
-    <text x="904" y="76" font-family="JetBrains Mono, monospace" font-size="12" fill="#76817b">06</text>
-    <text x="904" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Assess</text>
-    <text x="904" y="124">Label random points</text><text x="904" y="142">blind, read the</text><text x="904" y="160">confusion matrix</text>
+  <g font-size="12" fill="#44504a">
+    <text x="20" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">01</text>
+    <text x="20" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Prepare</text>
+    <text x="20" y="124">Load ortho + DSM</text><text x="20" y="142">Colour-correct</text><text x="20" y="160">Resample</text>
+    <text x="174" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">02</text>
+    <text x="174" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Segment</text>
+    <text x="174" y="124">SLIC groups pixels</text><text x="174" y="142">into objects, in</text><text x="174" y="160">tiles if needed</text>
+    <text x="328" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">03</text>
+    <text x="328" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Describe</text>
+    <text x="328" y="124">19 measurements,</text><text x="328" y="142">24 with a DSM</text><text x="328" y="160">(automatic)</text>
+    <text x="482" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">04 · optional</text>
+    <text x="482" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Discover</text>
+    <text x="482" y="124">DINOv2 appearance,</text><text x="482" y="142">group look-alikes,</text><text x="482" y="160">name the groups</text>
+    <text x="636" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">05</text>
+    <text x="636" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Label &amp; train</text>
+    <text x="636" y="124">Click examples,</text><text x="636" y="142">check separability,</text><text x="636" y="160">train a Random Forest</text>
+    <text x="790" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">06</text>
+    <text x="790" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Classify</text>
+    <text x="790" y="124">Predict every object,</text><text x="790" y="142">sieve small patches,</text><text x="790" y="160">export GeoTIFF</text>
+    <text x="944" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">07</text>
+    <text x="944" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Assess</text>
+    <text x="944" y="124">Sample points,</text><text x="944" y="142">label them blind,</text><text x="944" y="160">read the matrix</text>
   </g>
-  <text x="701" y="258" text-anchor="middle" font-size="13" fill="#44504a">retrain: inspect errors, add samples, classify again</text>
+  <text x="769" y="258" text-anchor="middle" font-size="13" fill="#44504a">retrain: inspect errors, add samples, classify again</text>
 </svg>
-<figcaption>Stage 3 is where the image becomes numbers. Stages 4 and 5 repeat until the map is right; stage 6 measures how right.</figcaption>
+<figcaption>Stage 3 is where the image becomes numbers. Stage 4 is optional: it proposes the classes for you to name. Stages 5 and 6 repeat until the map is right; stage 7 measures how right.</figcaption>
 </figure>
 
-<p>On the sample data at 10 cm with a GPU, segmenting and measuring all <span data-d="segmentation.segments" data-fmt="int"></span> objects took about <strong>35 seconds</strong>. Most of your time goes into labelling training examples and checking the result.</p>
+<p>Computing is the quick part. On the worked example, segmentation and feature measurement for <span data-d="segmentation.segments" data-fmt="int"></span> objects ran in minutes on a desktop GPU. Most of your time goes into reviewing groups, labelling examples and checking the result.</p>
 
 <h2 id="install"><span class="num">2</span>Installing and launching</h2>
-<p>Lite Land ships as a self-contained Windows program. You do not need Python or any GIS software installed. A free trial is available; the full version is licensed separately.</p>
+<div class="note"><p><strong>Coming soon.</strong> Lite Land will be released as free, open-source software under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). The program and its source code are not available for download yet; this page describes how installation will work. For early access, write to <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p></div>
+<p>Lite Land ships as a self-contained Windows program; you do not need Python or any GIS software installed.</p>
 <ol class="steps">
-  <li><strong>Download the trial</strong>, <code>LiteLand_Trial_v1.3.zip</code>, from the <a href="https://drive.google.com/file/d/1JxOnxnY069Mfg6nPAA1eiSF7T0b4u91c/view?usp=drive_link" target="_blank" rel="noopener" data-goatcounter-click="download-trial" data-goatcounter-title="Download Lite Land trial (install steps)">Google Drive</a>.</li>
-  <li><strong>Unzip the whole folder</strong> to your computer, for example to <code>C:\Tools\LiteLand_Trial</code>. It holds <code>LiteLand_Trial.exe</code>, an <code>_internal</code> folder of libraries and a <code>sample</code> folder. Keep them together; the program will not start if the exe is moved out on its own.</li>
-  <li><strong>Double-click <code>LiteLand_Trial.exe</code>.</strong> The first launch can be slow while Windows loads the libraries; later launches are quicker.</li>
+  <li><strong>Download</strong> the release zip (available at release).</li>
+  <li><strong>Unzip the whole folder</strong>, for example to <code>C:\Tools\LiteLand</code>. It holds the program, an <code>_internal</code> folder of libraries, and the DINOv2 model weights in <code>_internal\models</code>. Keep them together; the program will not start if the exe is moved out on its own.</li>
+  <li><strong>Double-click the program</strong> (<code>PyOBIA.exe</code> in current builds). The first launch can be slow while Windows loads the libraries; later launches are quicker.</li>
   <li><strong>Check the console</strong> at the bottom of the window. It should say <code>Load an image to begin.</code> Every action the app takes is logged there, including errors.</li>
-  <li><strong>Check the Segmentation Engine box</strong> on Tab 1. If <span class="ui">GPU</span> is selectable, an NVIDIA CUDA graphics card was found and segmentation will run on it. If it is greyed out, the app runs on the CPU only; everything still works, just slower.</li>
-  <li><strong>Click <span class="ui">Open Sample Session</span></strong> on Tab 1 to open the sample survey and its finished classification, used throughout this manual.</li>
+  <li><strong>Check the Segmentation Engine box</strong> on Tab 1. If <span class="ui">GPU</span> is selectable, an NVIDIA CUDA graphics card was found; segmentation and the DINOv2 appearance features will run on it. If it is greyed out, everything runs on the CPU, just slower.</li>
 </ol>
-<div class="table-wrap"><table>
-  <thead><tr><th>Feature</th><th>Trial</th><th>Full version</th></tr></thead>
-  <tbody>
-    <tr><td>Tab 1: load, colour-correct, resample, DSM overlay, segment (CPU or GPU)</td><td>Yes, on your own data</td><td>Yes</td></tr>
-    <tr><td>Tab 2: Segmented, Classified and Blend views</td><td>Yes, on the sample session</td><td>Yes</td></tr>
-    <tr><td>Classes, training samples, grow and merge tools</td><td>No</td><td>Yes</td></tr>
-    <tr><td>Train, classify, minimum mapping unit, GeoTIFF + QGIS export</td><td>No</td><td>Yes</td></tr>
-    <tr><td>Save and load your own workspaces</td><td>No</td><td>Yes</td></tr>
-    <tr><td>Tab 3: accuracy assessment</td><td>No (shown, locked)</td><td>Yes</td></tr>
-  </tbody>
-</table></div>
-<p class="small">For the full version, contact LeoBar at <code>ldbarua@gmail.com</code>. The full version's program is <code>PyOBIA.exe</code> in a <code>PyOBIA</code> folder; its window title reads <em>Object-Based Image Analysis (OBIA) Tool</em>.</p>
+<details class="why"><summary>Running from source instead</summary>
+<p>Once the source is published: clone the repository, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python obia_app.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, follow the note at the top of <code>requirements.txt</code>. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
+</details>
 <div class="table-wrap"><table>
   <thead><tr><th>Requirement</th><th>Needed</th><th>Notes</th></tr></thead>
   <tbody>
-    <tr><td>Operating system</td><td>Windows 10 or 11, 64-bit</td><td>The build is Windows-only. On a fresh machine you may need the Microsoft Visual C++ Redistributable (x64).</td></tr>
-    <tr><td>Graphics card</td><td>Optional</td><td>An NVIDIA GPU with CUDA speeds up segmentation. On the sample: <span data-d="seg_series.k8000.seconds" data-fmt="f1"></span> s on GPU vs <span data-d="seg_series.cpu_k8000.seconds" data-fmt="f0"></span> s on CPU.</td></tr>
-    <tr><td>GPU memory</td><td>Scene-dependent</td><td>About 60 ha at 10 cm/px came near the limit of an 8 GB card. Resample larger scenes first (<a href="workflow.html#resample">Part C, 6.3</a>).</td></tr>
-    <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it when you first save.</td></tr>
+    <tr><td>Operating system</td><td>Windows 10 or 11, 64-bit</td><td>On a fresh machine you may need the Microsoft Visual C++ Redistributable (x64).</td></tr>
+    <tr><td>Graphics card</td><td>Optional</td><td>An NVIDIA GPU with CUDA speeds up segmentation (about 10× in our tests) and the DINOv2 appearance features.</td></tr>
+    <tr><td>Memory (RAM)</td><td>16 GB or more recommended</td><td>Lite Land checks memory before loading, resampling and segmenting, and suggests a coarser resolution or tiling when a step would not fit. Very large mosaics are read at reduced resolution on load.</td></tr>
+    <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it. The worked example's workspace is about 0.9 GB.</td></tr>
   </tbody>
 </table></div>
 
-<h2 id="sample"><span class="num">3</span>The sample dataset</h2>
-<p>Every figure and number in this manual comes from one drone survey of a hillside campus: tree stands, a sports field, roads, earthworks and dozens of roofs. Its two files, with the saved session, ship with the trial in its <code>sample</code> folder; <span class="ui">Open Sample Session</span> opens them.</p>
+<h2 id="sample"><span class="num">3</span>The worked example</h2>
+<p>Every figure and number in this manual comes from one drone survey: a <span data-d="grid.area_ha" data-fmt="f1"></span> ha mixed-use block in Bay, Laguna, on the eastern side of the Mount Makiling range in the Philippines. In one flight it holds the cover types an operational workflow has to separate: closed natural canopy; agroforestry stands of coconut, banana and fruit trees; grass and regrowth on disturbed ground; bare soil on tracks and earthworks; a small stream; roads and buildings; and a solid-waste disposal site with its cleared apron.</p>
 <dl class="kv">
-  <div><dt>Orthomosaic</dt><dd>Ortho_sample.tif</dd></div>
-  <div><dt>Surface model</dt><dd>DSM_sample.tif</dd></div>
-  <div><dt>Size</dt><dd><span data-d="grid.native_width" data-fmt="int"></span> × <span data-d="grid.native_height" data-fmt="int"></span> px</dd></div>
-  <div><dt>Resolution</dt><dd>8 cm per pixel</dd></div>
-  <div><dt>Footprint</dt><dd>545 × 403 m · 22 ha</dd></div>
+  <div><dt>Orthomosaic</dt><dd>RGB, 8-bit, <span data-d="grid.native_pixel_m" data-mul="100" data-fmt="f1"></span> cm/px</dd></div>
+  <div><dt>Native size</dt><dd><span data-d="grid.native_width" data-fmt="int"></span> × <span data-d="grid.native_height" data-fmt="int"></span> px</dd></div>
+  <div><dt>Surface model</dt><dd>DSM, <span data-d="grid.dsm_pixel_m" data-mul="100" data-fmt="f1"></span> cm/px</dd></div>
+  <div><dt>Working grid</dt><dd>10 cm · <span data-d="grid.width" data-fmt="int"></span> × <span data-d="grid.height" data-fmt="int"></span> px</dd></div>
+  <div><dt>Mapped area</dt><dd><span data-d="grid.area_ha" data-fmt="f1"></span> ha</dd></div>
   <div><dt>Coordinates</dt><dd>WGS 84 / UTM 51N</dd></div>
-  <div><dt>Bands</dt><dd>RGB + alpha, 8-bit</dd></div>
   <div><dt>DSM heights</dt><dd><span data-d="dsm.min" data-fmt="f0"></span>–<span data-d="dsm.max" data-fmt="f0"></span> m</dd></div>
+  <div><dt>Objects</dt><dd><span data-d="segmentation.segments" data-fmt="int"></span></dd></div>
 </dl>
 <div class="strip c2">
-  <figure><img src="img/sample_ortho.jpg" alt="The full sample orthomosaic"><figcaption><b>Orthomosaic</b> True colour, as the camera saw it.</figcaption></figure>
-  <figure><img src="img/sample_dsm.jpg" alt="The DSM shown as coloured, hill-shaded elevation"><figcaption><b>Digital Surface Model</b> Height of the top surface (canopy, roofs, ground), shaded from the north-west. Green is low, brown and white are high.</figcaption></figure>
+  <figure><img src="img/sample_ortho.jpg" alt="The full survey orthomosaic"><figcaption><b>Orthomosaic</b> True colour, as the camera saw it. The road runs from the south-west to the settlement in the north; the pale patch on the east side is the disposal site.</figcaption></figure>
+  <figure><img src="img/sample_dsm.jpg" alt="The DSM shown as coloured, hill-shaded elevation"><figcaption><b>Digital Surface Model</b> Height of the top surface (canopy, roofs, ground), shaded from the north-west.</figcaption></figure>
 </div>
-<p>The two files are a matched pair from the same photogrammetry run: the same grid, the same 8 cm pixels, the same corners. Lite Land needs them to line up because it reads each object's height from exactly the pixels it reads its colour from. If your DSM has a different resolution, the app regrids it to the orthomosaic automatically.</p>
+<p>The orthomosaic was captured at 3.3 cm per pixel. The worked example segments it on a 10 cm working grid, so objects stay crown-sized, but measures each object's colour and texture from the full 3.3 cm pixels (<a href="concepts.html#feature-res">Part B, 5.3</a>). The DSM comes from the same photogrammetry run on a coarser grid; Lite Land places it by its coordinates, so the two need not share a pixel size.</p>
 <figure>
-  <img src="img/sample_inset_8cm.jpg" alt="A 50 by 50 metre patch at full 8 cm resolution showing parked cars and individual tree crowns" style="max-width:520px">
-  <figcaption><b>What 8 cm resolves.</b> A 50 × 50 m patch at full resolution: individual cars, crown edges and lane markings are visible. The worked example resamples to 10 cm, which still keeps every crown and roof in thousands of pixels.</figcaption>
+  <img src="img/sample_inset_native.jpg" alt="A 30 by 30 metre patch at full 3.3 cm resolution showing roofs and the crowns beside them" style="max-width:min(520px,100%)">
+  <figcaption><b>What 3.3 cm resolves.</b> A 30 × 30 m patch at full resolution: roof sheets, gutters and single fronds are visible. At this detail a segmenter outlines leaves, which is why the example segments at 10 cm.</figcaption>
 </figure>
+<p class="small">The imagery is from a privately owned site and is not bundled with the program. You can follow every step on your own orthomosaic.</p>
 
 <h2 id="tour"><span class="num">4</span>A tour of the interface</h2>
-<p>The window has three tabs across the top, a control column on the left of each tab, a large map viewer, and a console strip along the bottom that logs every step. Hover a numbered marker to find its control.</p>
+<p>The window has a menu bar, four tabs, a control column on the left of each tab, a large map viewer, and a console strip along the bottom that logs every step. All four viewers share one copy of the image, so switching tabs is instant even on large mosaics.</p>
 
-<h3 id="tour-tab1">Tab 1 · Load, View &amp; Segment</h3>
-<div class="shot">
-  <div class="shot-img">
-    <img src="img/app/04_resampled.webp" alt="Lite Land Tab 1 with the sample orthomosaic loaded and resampled to 10 cm">
-    <span class="pin" style="left:6.3%;top:2.3%">1</span>
-    <span class="pin" style="left:22%;top:7%">2</span>
-    <span class="pin" style="left:3.6%;top:10%">3</span>
-    <span class="pin" style="left:30%;top:27.7%">4</span>
-    <span class="pin" style="left:1.8%;top:45.4%">5</span>
-    <span class="pin" style="left:1.8%;top:48%">6</span>
-    <span class="pin" style="left:1.8%;top:66.8%">7</span>
-    <span class="pin" style="left:24%;top:77.4%">8</span>
-    <span class="pin" style="left:23.6%;top:6%">9</span>
-    <span class="pin" style="left:58%;top:45%">10</span>
-    <span class="pin" style="left:50%;top:88%">11</span>
-  </div>
-  <ol class="legend-list">
-    <li><span class="k">1</span><span><b>Tabs.</b> Work left to right: segment, classify, assess.</span></li>
-    <li><span class="k">2</span><span><b>Load Workspace.</b> Reopen a saved session.</span></li>
-    <li><span class="k">3</span><span><b>Input Data.</b> Orthomosaic and optional DSM paths. Each loads as soon as you pick it.</span></li>
-    <li><span class="k">4</span><span><b>Resample.</b> Work at a coarser resolution, by percent or cm/px.</span></li>
-    <li><span class="k">5</span><span><b>Color Correction.</b> Collapsed by default; click to open.</span></li>
-    <li><span class="k">6</span><span><b>SLIC parameters.</b> Number of segments, compactness, sigma.</span></li>
-    <li><span class="k">7</span><span><b>Segmentation Engine.</b> GPU or CPU.</span></li>
-    <li><span class="k">8</span><span><b>Run Segmentation.</b> Starts stages 2 and 3.</span></li>
-    <li><span class="k">9</span><span><b>Overlays.</b> Segment boundaries and the elevation layer, with opacity.</span></li>
-    <li><span class="k">10</span><span><b>Viewer.</b> Scroll to zoom, drag to pan.</span></li>
-    <li><span class="k">11</span><span><b>Console.</b> Progress, timings, warnings and errors.</span></li>
-  </ol>
-</div>
+<h3 id="menus">Menus</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Menu</th><th>Item</th><th>Shortcut</th><th>Does</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="4">File</td><td>New</td><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>Start a blank session. Asks first if there are unsaved changes.</td></tr>
+    <tr><td>Load Workspace…</td><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Pick a <code>_workspace</code> folder and reopen everything in it.</td></tr>
+    <tr><td>Save Workspace</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save the whole session beside the orthomosaic.</td></tr>
+    <tr><td>Save Workspace As…</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>Copy the orthomosaic, DSM and workspace to a new folder and carry on from the copies.</td></tr>
+    <tr><td rowspan="3">Import</td><td>Orthomosaic…</td><td></td><td>Same as Browse on Tab 1.</td></tr>
+    <tr><td>DSM…</td><td></td><td>Attach a surface model.</td></tr>
+    <tr><td>Ground Truth CSV…</td><td></td><td>Bring in field points for Tab 4.</td></tr>
+    <tr><td>About</td><td>Manual</td><td></td><td>Opens this manual.</td></tr>
+  </tbody>
+</table></div>
+<p class="small">Closing the window, New and Load Workspace all ask <em>Save / Discard / Cancel</em> when there is unsaved work.</p>
 
-<h3 id="tour-tab2">Tab 2 · Classification</h3>
-<div class="shot">
-  <div class="shot-img">
-    <img src="img/app/14_classified.webp" alt="Lite Land Tab 2 showing the five classes and the classified sample map">
-    <span class="pin" style="left:2%;top:6.5%">1</span>
-    <span class="pin" style="left:2%;top:14%">2</span>
-    <span class="pin" style="left:2%;top:27.2%">3</span>
-    <span class="pin" style="left:23.4%;top:31.2%">4</span>
-    <span class="pin" style="left:2%;top:71%">5</span>
-    <span class="pin" style="left:24.2%;top:6.5%">6</span>
-    <span class="pin" style="left:24.2%;top:22.5%">7</span>
-    <span class="pin" style="left:24.2%;top:45.9%">8</span>
-    <span class="pin" style="left:24.2%;top:55.3%">9</span>
-    <span class="pin" style="left:46.9%;top:64.4%">10</span>
-    <span class="pin" style="left:46.9%;top:79.3%">11</span>
-    <span class="pin" style="left:72%;top:45%">12</span>
-  </div>
-  <ol class="legend-list">
-    <li><span class="k">1</span><span><b>Workspace.</b> Save or reload the whole session.</span></li>
-    <li><span class="k">2</span><span><b>DSM Controls.</b> Shows whether height features are active.</span></li>
-    <li><span class="k">3</span><span><b>Add a class.</b> Type a name, click Add, pick a colour.</span></li>
-    <li><span class="k">4</span><span><b>Class list.</b> The highlighted class receives your clicks. The number is its training objects.</span></li>
-    <li><span class="k">5</span><span><b>Class tools.</b> Merge, remove, clear one class's samples, clear all.</span></li>
-    <li><span class="k">6</span><span><b>Views.</b> Training-sample toggle; Blend, Segmented, Raw/Classified; opacity.</span></li>
-    <li><span class="k">7</span><span><b>Selection &amp; Merge.</b> Grow a selection by similarity, assign it, or merge it into one object.</span></li>
-    <li><span class="k">8</span><span><b>Train / Classify.</b> Fit the Random Forest, then label every object.</span></li>
-    <li><span class="k">9</span><span><b>Generalization.</b> Minimum mapping unit (sieve) in pixels.</span></li>
-    <li><span class="k">10</span><span><b>Export.</b> Write the classified GeoTIFF and QGIS style.</span></li>
-    <li><span class="k">11</span><span><b>Reset.</b> Clear everything and start over.</span></li>
-    <li><span class="k">12</span><span><b>Viewer.</b> Click objects to label them; Ctrl+drag to paint.</span></li>
-  </ol>
+<h3 id="tour-tabs">The four tabs</h3>
+<div class="cards">
+  <div class="card"><span class="k">Tab 1</span><h3>Load, View &amp; Segment</h3><p>Orthomosaic and DSM paths, resampling, colour correction, the SLIC settings (with <em>Colour/texture at</em> for measuring finer than the segmentation grid), the engine, Run Segmentation, and boundary and elevation overlays.</p></div>
+  <div class="card"><span class="k">Tab 2</span><h3>Discover Classes</h3><p>Find Groups, a list of group cards, a scrolling gallery of the selected group's tiles, naming, merge, split, ignore and find-similar tools, a group overlay on the map, and Send Named Groups to Classification.</p></div>
+  <div class="card"><span class="k">Tab 3</span><h3>Classification</h3><p>Class list, the views (Blend, Segmented, Raw/Classified), selection, grow and merge tools, Check Class Separability, What to Label Next, Train and Classify, the minimum mapping unit, and export.</p></div>
+  <div class="card"><span class="k">Tab 4</span><h3>Accuracy Assessment</h3><p>Reference source, sampling design (simple random or stratified by map class), the point list and assignment tools, Run Accuracy Assessment, and the Iterations list of earlier runs.</p></div>
 </div>
-
-<h3 id="tour-tab3">Tab 3 · Accuracy Assessment</h3>
-<div class="shot">
-  <div class="shot-img">
-    <img src="img/app/17_accuracy_overview.webp" alt="Lite Land Tab 3 with 100 reference points over the raw orthomosaic">
-    <span class="pin" style="left:2%;top:6.5%">1</span>
-    <span class="pin" style="left:2%;top:24%">2</span>
-    <span class="pin" style="left:24.2%;top:7.8%">3</span>
-    <span class="pin" style="left:24.2%;top:14.9%">4</span>
-    <span class="pin" style="left:46.9%;top:37%">5</span>
-    <span class="pin" style="left:24.2%;top:50.1%">6</span>
-    <span class="pin" style="left:24.2%;top:53.5%">7</span>
-    <span class="pin" style="left:24.2%;top:61%">8</span>
-    <span class="pin" style="left:46.9%;top:66.5%">9</span>
-    <span class="pin" style="left:72%;top:40%">10</span>
-  </div>
-  <ol class="legend-list">
-    <li><span class="k">1</span><span><b>Ground truth source.</b> Import field points, or generate points to label yourself.</span></li>
-    <li><span class="k">2</span><span><b>Classes tally.</b> How many points carry each label.</span></li>
-    <li><span class="k">3</span><span><b>Save.</b> Save the workspace, or just the points.</span></li>
-    <li><span class="k">4</span><span><b>Random points.</b> How many to add, then Generate.</span></li>
-    <li><span class="k">5</span><span><b>Point list.</b> Tick points, filter by class, double-click to fly to one.</span></li>
-    <li><span class="k">6</span><span><b>Navigation.</b> Step through points with &lt; and &gt;.</span></li>
-    <li><span class="k">7</span><span><b>Assign.</b> Give ticked points a class, or unassign them.</span></li>
-    <li><span class="k">8</span><span><b>Warning.</b> Points still without a label are left out of the run.</span></li>
-    <li><span class="k">9</span><span><b>Run.</b> Build the confusion matrix and report.</span></li>
-    <li><span class="k">10</span><span><b>Viewer.</b> Always the raw image, so the map cannot sway your labels.</span></li>
-  </ol>
-</div>
+<p>Each tab is described control by control in <a href="workflow.html">Part C</a>.</p>
 
 <h3 id="controls">Mouse and keys</h3>
 <div class="table-wrap"><table>
   <thead><tr><th>Action</th><th>Where</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td>Scroll wheel</td><td>Any viewer</td><td>Zoom in and out. Zooming out stops when the whole image fits.</td></tr>
+    <tr><td>Scroll wheel</td><td>Any viewer</td><td>Zoom in and out. Zoomed in, the viewer draws a sharp patch of the visible area.</td></tr>
     <tr><td>Drag</td><td>Any viewer</td><td>Pan.</td></tr>
-    <tr><td>Click an object</td><td>Tab 2</td><td>Add it to the highlighted class as a training sample. Click it again to remove it.</td></tr>
-    <tr><td><kbd>Ctrl</kbd> + drag</td><td>Tab 2</td><td>Paint: every object the cursor crosses joins the highlighted class.</td></tr>
-    <tr><td>Click (Selection Mode on)</td><td>Tab 2</td><td>Select an object as a seed; the Grow Tolerance slider then grows it.</td></tr>
-    <tr><td><kbd>Ctrl</kbd> + drag (Selection Mode on)</td><td>Tab 2</td><td>Add every object crossed to the selection.</td></tr>
-    <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Tab 2 viewer, Selection Mode on</td><td>Undo the last selection change.</td></tr>
-    <tr><td>Double-click a class</td><td>Tab 2 class list</td><td>Rename it or change its colour.</td></tr>
-    <tr><td>Click a point</td><td>Tab 3</td><td>Tick or untick it.</td></tr>
-    <tr><td>Right-click a point</td><td>Tab 3</td><td>Assign a class, unassign, or delete.</td></tr>
-    <tr><td>Right-click empty map</td><td>Tab 3</td><td>Add a point here, with or without a class.</td></tr>
-    <tr><td><kbd>Ctrl</kbd> + drag a point</td><td>Tab 3</td><td>Move it.</td></tr>
-    <tr><td><kbd>,</kbd> and <kbd>.</kbd></td><td>Tab 3</td><td>Previous and next point.</td></tr>
-    <tr><td>Double-click a list row</td><td>Tab 3</td><td>Zoom the map to that point.</td></tr>
+    <tr><td>Click a group card; <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click</td><td>Tab 2 group list</td><td>Select one group; add groups or a range to the selection.</td></tr>
+    <tr><td>Click, <kbd>Ctrl</kbd>/<kbd>Shift</kbd>+click a tile</td><td>Tab 2 gallery</td><td>Select tiles. Right-click to move them to another group, a new group, or out of all groups.</td></tr>
+    <tr><td>Double-click a tile</td><td>Tab 2 gallery</td><td>Zoom the map to that segment and outline it.</td></tr>
+    <tr><td>Right-click a segment</td><td>Tab 2 map</td><td>Move it to a group or a new group, leave it out, or show its group.</td></tr>
+    <tr><td>Click an object</td><td>Tab 3</td><td>Add it to the highlighted class as a training sample. Click again to remove it.</td></tr>
+    <tr><td><kbd>Ctrl</kbd> + drag</td><td>Tab 3</td><td>Paint: every object the cursor crosses joins the highlighted class.</td></tr>
+    <tr><td>Right-click an object</td><td>Tab 3</td><td>Find Similar Segments, or Show Its Group in Discover.</td></tr>
+    <tr><td>Click (Selection Mode on)</td><td>Tab 3</td><td>Select a seed; the Grow Tolerance slider then grows it.</td></tr>
+    <tr><td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td><td>Tab 3, Selection Mode on</td><td>Undo the last selection change.</td></tr>
+    <tr><td>Double-click a class</td><td>Tab 3 class list</td><td>Rename it or change its colour.</td></tr>
+    <tr><td>Click a point</td><td>Tab 4</td><td>Tick or untick it.</td></tr>
+    <tr><td>Right-click a point / empty map</td><td>Tab 4</td><td>Assign a class, unassign, delete; or add a point here.</td></tr>
+    <tr><td><kbd>Ctrl</kbd> + drag a point</td><td>Tab 4</td><td>Move it.</td></tr>
+    <tr><td><kbd>,</kbd> and <kbd>.</kbd></td><td>Tab 4</td><td>Previous and next point.</td></tr>
+    <tr><td>Double-click a row</td><td>Tab 4 point list / Iterations</td><td>Zoom to that point / show that iteration's results.</td></tr>
   </tbody>
 </table></div>
 
@@ -313,7 +246,7 @@
 </nav>
 </main>
 </div>
-<footer class="foot">Lite Land User Manual · by LeoBar · figures and numbers generated from the sample data by <code>docs/manual/tools</code>.</footer>
+<footer class="foot">Lite Land User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
 <script data-goatcounter="https://liteland.goatcounter.com/count"
         async src="https://gc.zgo.at/count.js"></script>
 <script src="manual_data.js"></script>

@@ -3,10 +3,10 @@
 (function () {
   "use strict";
   var D = window.MANUAL_DATA || {};
-  // Class names and colours in the order of the workspace's class list (raster values 1..5)
+  // Class names and colours in the order of the workspace's class list (raster values 1..n)
   var CLASSES = D.classes || [
-    ["Grass", "#ffef0e"], ["Trees", "#005500"], ["Bare", "#aa5500"],
-    ["Impervious", "#55557f"], ["Building", "#aa0000"]
+    ["Natural canopy", "#1b5e20"], ["Agricultural", "#c0ca33"], ["Grass", "#9ccc65"],
+    ["Bare soil", "#8d6e63"], ["Solid waste", "#bdbdbd"], ["Built-up", "#d32f2f"], ["Stream", "#1e88e5"]
   ];
   var COLOR = {}; CLASSES.forEach(function (c) { COLOR[c[0]] = c[1]; });
 
@@ -120,7 +120,10 @@
       dsm_mean: ["Mean height", "Mean DSM value in metres above the datum. Follows the terrain as well as the objects on it."],
       dsm_std: ["Height variation", "Standard deviation of the DSM inside the object. High on crowns and roof edges."],
       slope_mean: ["Mean slope", "Mean surface slope in degrees, from the DSM gradient. Steep on crown sides and roof planes."],
-      dsm_rel_neighbors: ["Height vs neighbours", "Own mean height minus the mean of the touching objects. Red = higher than its surroundings, such as tree crowns beside a road."]
+      dsm_rel_neighbors: ["Height vs neighbours", "Own mean height minus the mean of the touching objects. Red = higher than its surroundings, such as tree crowns beside a road."],
+      hag_mean: ["Height above ground", "Mean height above a ground surface estimated from the DSM itself (a 40 m opening). Tall canopy and roofs stand out on any slope; grass, roads and bare ground sit near zero."],
+      deep_5m_pc1: ["Appearance, 5 m · PC1", "First principal component of the DINOv2 description of a 5 m patch around the object: what the object and its edge look like."],
+      deep_10m_pc1: ["Appearance, 10 m · PC1", "First principal component of the DINOv2 description of a 10 m patch: the pattern around the object. Here it lights up the regular crowns of the agroforestry stand."]
     };
     var GROUPS = [
       ["Colour", ["r_mean", "g_mean", "b_mean", "r_std", "g_std", "b_std", "brightness_mean"]],
@@ -128,13 +131,15 @@
       ["Texture (GLCM)", ["contrast", "homogeneity", "energy", "entropy"]],
       ["Shape", ["area", "perimeter", "circularity", "convexity"]],
       ["Context", ["brightness_rel_neighbors"]],
-      ["Height (DSM)", ["dsm_mean", "dsm_std", "slope_mean", "dsm_rel_neighbors"]]
+      ["Height (DSM)", ["dsm_mean", "dsm_std", "slope_mean", "dsm_rel_neighbors", "hag_mean"]],
+      ["Appearance (DINOv2)", ["deep_5m_pc1", "deep_10m_pc1"]]
     ];
     var PIX = { exg_mean: "exg", vari_mean: "vari", ngrdi_mean: "ngrdi" };
     var CMAPS = {
       viridis: "linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725)",
       cividis: "linear-gradient(90deg,#00224e,#434e6c,#7d7c78,#bcaf6f,#fee838)",
-      RdBu_r: "linear-gradient(90deg,#053061,#4393c3,#f7f7f7,#d6604d,#67001f)"
+      RdBu_r: "linear-gradient(90deg,#053061,#4393c3,#f7f7f7,#d6604d,#67001f)",
+      magma: "linear-gradient(90deg,#000004,#51127c,#b73779,#fc8961,#fcfdbf)"
     };
     var list = FX.querySelector(".fx-list"), view = FX.querySelector(".fx-view");
     var buttons = {};
@@ -195,13 +200,14 @@
       var tot = M[i].reduce(function (a, b) { return a + b; }, 0);
       h += '<tr><th class="rowh"><span class="sw" style="background:' + COLOR[r] + '"></span>' + r + "</th>";
       M[i].forEach(function (v, j) { h += "<td" + (i === j ? ' class="diag"' : "") + ">" + v + "</td>"; });
-      h += '<td class="tot">' + tot + '</td><td class="acc">' + fmt(f.ua[r], "pct0") + "</td></tr>";
+      var e = f.est && f.est[r];
+      h += '<td class="tot">' + tot + '</td><td class="acc">' + (e ? fmt(e.ua, "pct0") + ' <span class="ci">±' + Math.round(e.ua_ci * 100) + "</span>" : fmt(f.ua[r], "pct0")) + "</td></tr>";
     });
     h += '<tr><th class="rowh tot">Total</th>';
     colTot.forEach(function (v) { h += '<td class="tot">' + v + "</td>"; });
     h += '<td class="tot">' + f.n + '</td><td></td></tr><tr><th class="rowh">Producer’s</th>';
-    cols.forEach(function (c) { h += '<td class="acc">' + fmt(f.pa[c], "pct0") + "</td>"; });
-    h += '<td></td><td class="acc">OA ' + fmt(f.oa, "pct") + "</td></tr></tbody></table>";
+    cols.forEach(function (c) { var e = f.est && f.est[c]; h += '<td class="acc">' + (e ? fmt(e.pa, "pct0") + ' <span class="ci">±' + Math.round(e.pa_ci * 100) + "</span>" : fmt(f.pa[c], "pct0")) + "</td>"; });
+    h += '<td></td><td class="acc">OA ' + (f.oa_aw != null ? fmt(f.oa_aw, "pct") + ' <span class="ci">±' + (f.oa_aw_ci * 100).toFixed(1) + "</span>" : fmt(f.oa, "pct")) + "</td></tr></tbody></table>";
     CM.innerHTML = h;
   }
 
@@ -235,7 +241,7 @@
     svg.appendChild(s("line", { x1: L, x2: W - Rt + 20, y1: y(full.oa), y2: y(full.oa), stroke: "#17201c", "stroke-width": 1.25, "stroke-dasharray": "5 4" }));
     svg.appendChild(s("text", { x: W - Rt + 28, y: y(full.oa) - 3, "font-size": 12.5, "font-weight": 700, fill: "#17201c", "font-family": "JetBrains Mono, monospace" }, fmt(full.oa, "pct0")));
     svg.appendChild(s("text", { x: W - Rt + 28, y: y(full.oa) + 13, "font-size": 12, fill: "#44504a", "font-family": "Public Sans, sans-serif" }, "your model,"));
-    svg.appendChild(s("text", { x: W - Rt + 28, y: y(full.oa) + 28, "font-size": 12, fill: "#44504a", "font-family": "Public Sans, sans-serif" }, "all " + full.samples + " objects"));
+    svg.appendChild(s("text", { x: W - Rt + 28, y: y(full.oa) + 28, "font-size": 12, fill: "#44504a", "font-family": "Public Sans, sans-serif" }, "all " + full.samples.toLocaleString("en-US") + " objects"));
     R.forEach(function (r, i) {
       svg.appendChild(s("text", { x: x(i), y: H - B + 20, "text-anchor": "middle", "font-size": 12, fill: "#76817b", "font-family": "JetBrains Mono, monospace" }, r.round));
       svg.appendChild(s("line", { x1: x(i), x2: x(i), y1: y(r.oa_min), y2: y(r.oa_max), stroke: "#0d6b62", "stroke-width": 2, "stroke-linecap": "round", opacity: .35 }));
@@ -266,7 +272,7 @@
   /* producer's accuracy: simulated round 1 vs the workspace's model, one row per class */
   var PA = document.getElementById("chart-pa");
   if (PA && D.simulation && D.final) {
-    var first = D.simulation.rounds[0].pa_mean, fin = D.final.pa;
+    var first = D.simulation.rounds[0].pa_mean, fin = D.simulation.final_full.pa || D.final.pa;
     var W2 = 720, rowH = 44, T2 = 30, L2 = 110, R2 = 40, H2 = T2 + rowH * CLASSES.length + 30;
     var X = function (v) { return L2 + v * (W2 - L2 - R2); };
     var svg2 = s("svg", { viewBox: "0 0 " + W2 + " " + H2, role: "img", "aria-label": "Producer's accuracy per class, simulated round 1 and the final model" });
@@ -305,4 +311,81 @@
       SV.innerHTML += '<tr><td class="num">' + fmt(r.mmu_px, "int") + '</td><td class="num">' + fmt(r.mmu_m2, "f1") + '</td><td class="num">' + fmt(r.changed_px, "pct") + '</td><td class="num">' + fmt(r.oa, "pct") + "</td></tr>";
     });
   }
+  /* ---- galleries: one large image and a strip of thumbnails (or labelled chips).
+     Markup: <div class="gallery"><figure class="g-main"><img><figcaption></figcaption></figure>
+     <div class="g-thumbs"><button data-src data-alt data-cap [data-thumb] [data-start]>label</button>…</div></div>
+     A .gallery with data-sep is filled from D.separability.pairs. */
+  function initGallery(g) {
+    var main = g.querySelector(".g-main img"), cap = g.querySelector(".g-main figcaption");
+    var btns = Array.prototype.slice.call(g.querySelectorAll(".g-thumbs button"));
+    var count = g.querySelector(".g-count");
+    if (!btns.length) return;
+    function cur() { return btns.findIndex(function (b) { return b.getAttribute("aria-selected") === "true"; }); }
+    function pick(i, focus) {
+      var b = btns[i];
+      btns.forEach(function (x, j) { x.setAttribute("aria-selected", String(j === i)); x.tabIndex = j === i ? 0 : -1; });
+      main.src = b.getAttribute("data-src"); main.alt = b.getAttribute("data-alt") || "";
+      if (cap) cap.innerHTML = b.getAttribute("data-cap") || "";
+      if (count) count.textContent = (i + 1) + " / " + btns.length;
+      if (focus) b.focus();
+      b.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+    btns.forEach(function (b, i) {
+      b.setAttribute("role", "tab");
+      var th = b.getAttribute("data-thumb");
+      if (th) b.insertBefore(el("img", { src: th, alt: "", loading: "lazy" }), b.firstChild);
+      b.addEventListener("click", function () { pick(i); });
+      b.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); pick((i + 1) % btns.length, true); }
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); pick((i - 1 + btns.length) % btns.length, true); }
+      });
+    });
+    g.querySelectorAll(".g-step").forEach(function (st) {
+      st.addEventListener("click", function () { pick((cur() + (+st.getAttribute("data-step")) + btns.length) % btns.length); });
+    });
+    var start = btns.findIndex(function (b) { return b.hasAttribute("data-start"); });
+    var keep = window.scrollY;
+    pick(start < 0 ? 0 : start);
+    window.scrollTo(0, keep);
+  }
+  document.querySelectorAll(".gallery[data-sep]").forEach(function (g) {
+    var box = g.querySelector(".g-thumbs");
+    ((D.separability || {}).pairs || []).forEach(function (p) {
+      var b = el("button", { type: "button", "data-src": "img/" + p.img,
+        "data-alt": "Signature plot for " + p.a + " against " + p.b,
+        "data-cap": "<b>" + p.a + " vs " + p.b + ".</b> Features sorted from most to least telling for this pair. Lines are class means, scaled to the pair's combined range; bands are each class's usual range." },
+        '<span class="sw" style="background:' + COLOR[p.a] + '"></span><span class="sw" style="background:' + COLOR[p.b] + '"></span>' + p.a + " · " + p.b);
+      if (p.a === g.getAttribute("data-start-a") && p.b === g.getAttribute("data-start-b")) b.setAttribute("data-start", "");
+      box.appendChild(b);
+    });
+  });
+  document.querySelectorAll(".gallery").forEach(initGallery);
+
+  /* ---- comparison gallery: a before/after slider whose pair is picked from thumbnails.
+     Buttons carry data-before, data-after, data-cap, data-thumb. */
+  document.querySelectorAll(".cgallery").forEach(function (g) {
+    var cmp = g.querySelector(".compare"), a = cmp.querySelector(":scope > img"), b = cmp.querySelector(".top img");
+    var cap = g.querySelector(".cg-cap");
+    var btns = Array.prototype.slice.call(g.querySelectorAll(".g-thumbs button"));
+    if (!btns.length) return;
+    function pick(i, focus) {
+      var x = btns[i];
+      btns.forEach(function (y, j) { y.setAttribute("aria-selected", String(j === i)); y.tabIndex = j === i ? 0 : -1; });
+      a.src = x.getAttribute("data-before"); b.src = x.getAttribute("data-after");
+      a.alt = x.getAttribute("data-alt-before") || ""; b.alt = x.getAttribute("data-alt-after") || "";
+      if (cap) cap.innerHTML = x.getAttribute("data-cap") || "";
+      if (focus) x.focus();
+    }
+    btns.forEach(function (x, i) {
+      x.setAttribute("role", "tab");
+      var th = x.getAttribute("data-thumb");
+      if (th) x.insertBefore(el("img", { src: th, alt: "", loading: "lazy" }), x.firstChild);
+      x.addEventListener("click", function () { pick(i); });
+      x.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowRight") { e.preventDefault(); pick((i + 1) % btns.length, true); }
+        if (e.key === "ArrowLeft") { e.preventDefault(); pick((i - 1 + btns.length) % btns.length, true); }
+      });
+    });
+    pick(0);
+  });
 })();
