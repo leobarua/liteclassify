@@ -147,9 +147,9 @@
 <div class="note"><p><strong>Coming soon.</strong> Lite Classify will be released as free, open-source software under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). The program and its source code are not available for download yet; this page describes how installation will work. For early access, write to <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p></div>
 <p>Lite Classify ships as a self-contained Windows program; you do not need Python or any GIS software installed.</p>
 <ol class="steps">
-  <li><strong>Download</strong> the release zip (available at release).</li>
-  <li><strong>Unzip the whole folder</strong>, for example to <code>C:\Tools\LiteClassify</code>. It holds the program, an <code>_internal</code> folder of libraries, and the DINOv2 model weights in <code>_internal\models</code>. Keep them together; the program will not start if the exe is moved out on its own.</li>
-  <li><strong>Double-click the program</strong> (<code>LiteClassify.exe</code>). A splash screen shows while the libraries load. The first launch can be slow while Windows loads the libraries; later launches are quicker.</li>
+  <li><strong>Download an installer</strong> (available at release). <em>Setup CPU</em> (about 300 MB) runs on any Windows 10/11 PC. <em>Setup GPU</em> (about 1.7 GB) adds NVIDIA CUDA support: much faster segmentation and appearance features on an NVIDIA graphics card. Both work offline once installed.</li>
+  <li><strong>Run the installer.</strong> It installs for your user account, with no administrator rights needed, into <code>%LOCALAPPDATA%\Programs\Lite Classify</code>, and adds a Start-menu shortcut (a desktop shortcut is optional). Installing one edition over the other replaces it. Uninstall from Windows Settings › Apps.</li>
+  <li><strong>Start Lite Classify</strong> from the Start menu. A splash screen shows while the libraries load; the first launch can be slow, later launches are quicker.</li>
   <li><strong>Check the console</strong> at the bottom of the window. It should say <code>Load an image to begin.</code> Every action the app takes is logged there, including errors.</li>
   <li><strong>Check the Segmentation Engine box</strong> on Tab 1. If <span class="ui">GPU</span> is selectable, an NVIDIA CUDA graphics card was found; segmentation and the DINOv2 appearance features will run on it. If it is greyed out, everything runs on the CPU, just slower.</li>
 </ol>
@@ -190,7 +190,7 @@
 <p class="small">The imagery is from a privately owned site and is not bundled with the program. You can follow every step on your own orthomosaic.</p>
 
 <h2 id="tour"><span class="num">4</span>A tour of the interface</h2>
-<p>The window has a menu bar, four tabs, a control column on the left of each tab, a large map viewer, and a console strip along the bottom that logs every step. All four viewers share one copy of the image, so switching tabs is instant even on large mosaics.</p>
+<p>The window has a menu bar, four tabs, a control column on the left of each tab, a large map viewer, and a console strip along the bottom that logs every step. All four viewers share one copy of the image, so switching tabs is instant even on large mosaics, and they share the zoom and pan: switching tabs keeps the same view. The bar above each map shows the image's native and working resolution, size, coordinate system and bit depth; below that, the map coordinates under the cursor.</p>
 
 <h3 id="menus">Menus</h3>
 <div class="table-wrap"><table>
