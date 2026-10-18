@@ -16,10 +16,10 @@
   <div class="getbar">
     <div class="getbar-in">
       <div class="getbar-id">
-        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
-        <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
+        <p><b>Lite Classify</b> <span>· free and open source (GPL-3.0) · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p class="getbar-contact">Source on <a href="https://github.com/leobarua/liteclassify" target="_blank" rel="noopener" data-goatcounter-click="github-source" data-goatcounter-title="Lite Classify source on GitHub">GitHub</a><span class="sep"> · </span>Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
       </div>
-      <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
+      <a class="getbar-btn" href="https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link" target="_blank" rel="noopener" data-goatcounter-click="download-installers" data-goatcounter-title="Download Lite Classify installers (Google Drive)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg>Download</a>
     </div>
   </div>
   <div class="topbar-inner">
@@ -144,17 +144,17 @@
 <p>Computing is the quick part. On the worked example, segmentation and feature measurement for <span data-d="segmentation.segments" data-fmt="int"></span> objects ran in minutes on a desktop GPU. Most of your time goes into reviewing groups, labelling examples and checking the result.</p>
 
 <h2 id="install"><span class="num">2</span>Installing and launching</h2>
-<div class="note"><p><strong>Coming soon.</strong> Lite Classify will be released as free, open-source software under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). The program and its source code are not available for download yet; this page describes how installation will work. For early access, write to <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a>.</p></div>
+<div class="note"><p><strong>Free and open source.</strong> Lite Classify is released under the GNU General Public License v3 (see <a href="reference.html#licence">Part D, 17</a>). <a href="https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link" target="_blank" rel="noopener" data-goatcounter-click="download-installers" data-goatcounter-title="Download Lite Classify installers (Google Drive)">Download the installers</a> from Google Drive; the source code is on <a href="https://github.com/leobarua/liteclassify" target="_blank" rel="noopener" data-goatcounter-click="github-source" data-goatcounter-title="Lite Classify source on GitHub">GitHub</a>.</p></div>
 <p>Lite Classify ships as a self-contained Windows program; you do not need Python or any GIS software installed.</p>
 <ol class="steps">
-  <li><strong>Download an installer</strong> (available at release). <em>Setup CPU</em> (about 300 MB) runs on any Windows 10/11 PC. <em>Setup GPU</em> (about 1.7 GB) adds NVIDIA CUDA support: much faster segmentation and appearance features on an NVIDIA graphics card. Both work offline once installed.</li>
+  <li><strong><a href="https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link" target="_blank" rel="noopener" data-goatcounter-click="download-installers" data-goatcounter-title="Download Lite Classify installers (Google Drive)">Download an installer</a></strong>. <em>Setup CPU</em> (about 320 MB) runs on any Windows 10/11 PC. <em>Setup GPU</em> (about 1.8 GB) adds NVIDIA CUDA support: much faster segmentation and appearance features on an NVIDIA graphics card. Both work offline once installed.</li>
   <li><strong>Run the installer.</strong> It installs for your user account, with no administrator rights needed, into <code>%LOCALAPPDATA%\Programs\Lite Classify</code>, and adds a Start-menu shortcut (a desktop shortcut is optional). Installing one edition over the other replaces it. Uninstall from Windows Settings › Apps.</li>
   <li><strong>Start Lite Classify</strong> from the Start menu. A splash screen shows while the libraries load; the first launch can be slow, later launches are quicker.</li>
   <li><strong>Check the console</strong> at the bottom of the window. It should say <code>Load an image to begin.</code> Every action the app takes is logged there, including errors.</li>
   <li><strong>Check the Segmentation Engine box</strong> on Tab 1. If <span class="ui">GPU</span> is selectable, an NVIDIA CUDA graphics card was found; segmentation and the DINOv2 appearance features will run on it. If it is greyed out, everything runs on the CPU, just slower.</li>
 </ol>
 <details class="why"><summary>Running from source instead</summary>
-<p>Once the source is published: clone the repository, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python liteclassify.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, follow the note at the top of <code>requirements.txt</code>. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
+<p>Clone the <a href="https://github.com/leobarua/liteclassify" target="_blank" rel="noopener" data-goatcounter-click="github-source" data-goatcounter-title="Lite Classify source on GitHub">repository</a>, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python liteclassify.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, use <code>requirements-cpu.txt</code> instead. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
 </details>
 <div class="table-wrap"><table>
   <thead><tr><th>Requirement</th><th>Needed</th><th>Notes</th></tr></thead>
