@@ -1,0 +1,39 @@
+# Draft. Before release: fill in given names / ORCIDs, the version and date, and the
+# Zenodo DOI; when the paper is out, fill in preferred-citation's journal, volume and DOI.
+cff-version: 1.2.0
+message: "If you use Lite Classify, please cite the software and the paper below."
+title: "Lite Classify"
+abstract: >-
+  A desktop application for geographic object-based image analysis (GEOBIA) of
+  ultra-high-resolution UAS orthomosaics: SLIC segmentation, object features from RGB and
+  a photogrammetric DSM, class discovery with self-supervised DINOv2 context embeddings,
+  Random Forest classification, and design-based accuracy assessment.
+type: software
+authors:
+  - family-names: Barua
+    given-names: "L. D."
+    affiliation: "Makiling Center for Mountain Ecosystems, College of Forestry and Natural Resources, University of the Philippines Los Baños"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/leobarua/liteclassify"
+url: "https://leobarua.github.io/liteclassify/"
+license: GPL-3.0-only
+version: "1.0"
+# date-released: "2026-MM-DD"
+# doi: "10.5281/zenodo.XXXXXXX"
+keywords:
+  - GEOBIA
+  - object-based image analysis
+  - unmanned aerial systems
+  - SLIC superpixels
+  - self-supervised vision transformer
+  - Random Forest
+  - accuracy assessment
+preferred-citation:
+  type: article
+  title: "Lite Classify: an open-source geographic object-based image analysis application for ultra-high-resolution UAS orthomosaics"
+  authors:
+    - family-names: Barua
+      given-names: "L. D."
+  # journal: ""
+  # year: 2027
+  # doi: ""

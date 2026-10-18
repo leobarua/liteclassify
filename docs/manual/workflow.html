@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lite Classify Manual · Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;500;700&family=Public+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap">
+<link rel="icon" type="image/png" href="img/brand/liteclassify_64.png">
+<link rel="apple-touch-icon" href="img/brand/liteclassify_180.png">
+<link rel="stylesheet" href="manual.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="getbar">
+    <div class="getbar-in">
+      <div class="getbar-id">
+        <p><b>Lite Classify</b> <span>· open-source release coming soon · Windows 10/11 (64-bit) · NVIDIA GPU optional</span></p>
+        <p class="getbar-contact">Inquiries: <a href="mailto:ldbarua@gmail.com">ldbarua@gmail.com</a><span class="sep"> · </span>or DM on <a href="https://www.facebook.com/leonardo.barua" target="_blank" rel="noopener">Facebook</a></p>
+      </div>
+      <span class="getbar-soon" role="status"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Coming soon</span>
+    </div>
+  </div>
+  <div class="topbar-inner">
+  <a class="brand" href="index.html"><img class="brand-mark" src="img/brand/liteclassify_64.png" alt="" width="26" height="26"><span>Lite Classify <span class="brand-sub">Manual</span></span></a>
+  <nav class="parts" aria-label="Manual parts">
+    <a href="index.html"><span>A</span>Getting started</a>
+    <a href="concepts.html"><span>B</span>How it works</a>
+    <a href="workflow.html" aria-current="page"><span>C</span>Workflow</a>
+    <a href="reference.html"><span>D</span>Reference</a>
+  </nav>
+</div></header>
+
+<div class="frame">
+<aside class="toc" aria-label="On this page">
+  <p class="toc-title">Part C · Workflow</p>
+  <ol>
+    <li><a href="#prepare"><span class="n">6</span>Load and prepare</a>
+      <ol>
+        <li><a href="#load">Load the orthomosaic</a></li>
+        <li><a href="#dsm">Add a DSM</a></li>
+        <li><a href="#resample">Resample</a></li>
+        <li><a href="#color">Colour correction</a></li>
+        <li><a href="#elevation">Elevation overlay</a></li>
+      </ol>
+    </li>
+    <li><a href="#segment"><span class="n">7</span>Segment the image</a></li>
+    <li><a href="#discover"><span class="n">8</span>Discover classes</a>
+      <ol>
+        <li><a href="#find">Find groups</a></li>
+        <li><a href="#review">Review a group</a></li>
+        <li><a href="#name">Name groups</a></li>
+        <li><a href="#tidy">Merge, split, ignore</a></li>
+        <li><a href="#send">Send to Classification</a></li>
+      </ol>
+    </li>
+    <li><a href="#samples"><span class="n">9</span>Classes and samples</a>
+      <ol>
+        <li><a href="#classes">Classes</a></li>
+        <li><a href="#click">Click and paint</a></li>
+        <li><a href="#grow">Grow a selection</a></li>
+        <li><a href="#merge">Merge fragments</a></li>
+        <li><a href="#similar">Similar and uncertain</a></li>
+        <li><a href="#where">Where to sample</a></li>
+      </ol>
+    </li>
+    <li><a href="#classify"><span class="n">10</span>Train, classify, export</a>
+      <ol>
+        <li><a href="#sep">Check separability</a></li>
+        <li><a href="#train">Train and classify</a></li>
+        <li><a href="#views">Check with the views</a></li>
+        <li><a href="#loop">The retraining loop</a></li>
+        <li><a href="#mmu">Minimum mapping unit</a></li>
+        <li><a href="#export">Export and save</a></li>
+      </ol>
+    </li>
+    <li><a href="#assess"><span class="n">11</span>Assess accuracy</a>
+      <ol>
+        <li><a href="#acc-source">Choose a source</a></li>
+        <li><a href="#acc-design">Choose a design</a></li>
+        <li><a href="#acc-label">Label the points</a></li>
+        <li><a href="#acc-run">Run the assessment</a></li>
+        <li><a href="#acc-read">Read the result</a></li>
+        <li><a href="#iterations">Iterations</a></li>
+      </ol>
+    </li>
+  </ol>
+</aside>
+
+<main>
+<section class="hero">
+  <p class="eyebrow">Part C · Workflow</p>
+  <h1>Workflow, tab by tab</h1>
+  <p class="lead">The worked example from start to finish: every control you touch, in the order you touch it, with the settings used for the figures in this manual.</p>
+</section>
+
+<h2 id="prepare"><span class="num">6</span>Tab 1 · Load and prepare imagery</h2>
+
+<h3 id="load">6.1 Load the orthomosaic</h3>
+<ol class="steps">
+  <li>On <strong>Tab 1</strong>, under <span class="ui">Input Data</span>, click <span class="ui">Browse</span> next to <em>Orthomosaic</em> (or use <em>Import › Orthomosaic</em>) and pick the GeoTIFF. You can also paste a path and press <kbd>Enter</kbd>.</li>
+  <li>The image fills the viewer. The line under the resample slider shows its native resolution; for the worked example, 3.304 cm/px and 32,090 × 28,875 px.</li>
+  <li><strong>Very large images load at reduced resolution.</strong> Above about 400 megapixels (less if memory is short), Lite Classify reads the file straight at a coarser resolution, using the file's own overviews, instead of filling memory. The console says so, and the resample controls start at the loaded resolution. The worked example (0.93 gigapixels) loads this way.</li>
+</ol>
+<p class="small">Lite Classify reads the first three bands as red, green and blue, and uses the file's mask (or alpha band) to ignore empty corners of rotated mosaics. Building overviews (pyramids) in your photogrammetry software or GIS makes large files load faster.</p>
+
+<h3 id="dsm">6.2 Add a DSM (optional, recommended)</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Browse</span> next to <em>Elevation Model (Optional DSM)</em> and pick the surface model.</li>
+  <li>Only the file's header is read now. Heights are matched to the working grid when they are first needed, normally during segmentation, by their coordinates. The DSM may have a different pixel size and extent from the orthomosaic (the example's is 13.2 cm against 3.3 cm).</li>
+</ol>
+<p>With a DSM the classifier gets 24 features instead of 19. <span class="ui">Unload DSM</span> drops it again; do that before segmenting if you want a colour-only model.</p>
+
+<h3 id="resample">6.3 Resample to a working resolution</h3>
+<p>Very fine imagery makes more, smaller, noisier objects and uses more memory. Resampling re-reads the file at a coarser resolution. It always reads from the original file, so going coarse and back loses nothing.</p>
+<div class="gallery">
+  <figure class="g-main"><img src="" alt=""><figcaption></figcaption></figure>
+  <div class="g-bar">
+    <button class="g-step" type="button" data-step="-1" aria-label="Previous">‹</button>
+    <div class="g-thumbs" role="tablist" aria-label="Resolutions">
+      <button type="button" data-thumb="img/res_native.jpg" data-src="img/res_native.jpg" data-alt="A 30 by 22 metre area at 3.3 cm" data-cap="<b>3.3 cm (native).</b> Single fronds and roof sheets: too fine to segment.">3.3 cm</button>
+      <button type="button" data-thumb="img/res_10cm.jpg" data-src="img/res_10cm.jpg" data-alt="The same area at 10 cm" data-cap="<b>10 cm (used here).</b> Crowns, tracks and roofs intact." data-start>10 cm</button>
+      <button type="button" data-thumb="img/res_20cm.jpg" data-src="img/res_20cm.jpg" data-alt="The same area at 20 cm" data-cap="<b>20 cm.</b> Small crowns and narrow tracks start to blur together.">20 cm</button>
+    </div>
+    <span class="g-count"></span>
+    <button class="g-step" type="button" data-step="1" aria-label="Next">›</button>
+  </div>
+</div>
+<ol class="steps">
+  <li>Type a <span class="ui">Target Resolution</span> of <strong>10 cm/px</strong>, or move the <span class="ui">Resample Scale</span> slider. The cm/px box appears only for projected coordinate systems such as UTM.</li>
+  <li>Check the preview line under the slider: it shows the target resolution and the new image size, 10,603 × 9,541 px for the example.</li>
+  <li>Click <span class="ui">Apply Resample</span>. Lite Classify checks free memory first and suggests a coarser resolution if the result would not fit.</li>
+</ol>
+<div class="warn"><p><strong>Resampling clears downstream work.</strong> The segmentation, Discover groups, the classification and all training samples are tied to the old pixel grid and are cleared. Your class names and colours are kept, and so are accuracy points (they are stored in map coordinates). Resample first, then segment.</p></div>
+
+<h3 id="color">6.4 Colour correction</h3>
+<p>Click <span class="ui">Color Correction</span> to open the panel. <span class="ui">Auto-Correct</span> stretches the image so its darkest 2% and brightest 2% of values become black and white. The sliders adjust brightness, contrast, hue, saturation, temperature and the red, green and blue gains; <span class="ui">Reset Colors</span> undoes everything.</p>
+<div class="compare" data-label="Compare original colour with Auto-Correct">
+  <img src="img/color_before.jpg" alt="Original colours">
+  <div class="top"><img src="img/color_auto.jpg" alt="After Auto-Correct"></div>
+  <div class="bar"></div><span class="tag l">Original</span><span class="tag r">Auto-Correct (2–98%)</span>
+</div>
+<div class="note" style="margin-top:18px"><p><strong>What correction changes.</strong> The corrected image is what the segmenter sees, so it changes where boundaries fall. The features, however, are always measured on the original, uncorrected pixels. Correction helps segmentation on dull or hazy imagery but does not shift the values the classifier learns from.</p></div>
+
+<h3 id="elevation">6.5 Elevation overlay</h3>
+<p>Tick <span class="ui">Show Elevation</span> above the viewer to lay the shaded DSM over the image, and set its <span class="ui">Opacity</span> (default 60%). Use it to confirm the DSM lines up with the image: roof edges and crown outlines should sit exactly on their shading.</p>
+<figure>
+  <img src="img/hillshade_overlay.jpg" alt="Close-up of the shaded DSM over the image" style="max-width:min(640px,100%)">
+  <figcaption><b>Checking alignment.</b> Roofs, the shed and crown edges line up with their relief.</figcaption>
+</figure>
+
+<h2 id="segment"><span class="num">7</span>Tab 1 · Segment the image</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Control</th><th>Range</th><th>Default</th><th>Worked example</th><th>Start here</th></tr></thead>
+  <tbody>
+    <tr><td>Object Size</td><td class="mono">0.5–10,000 m²</td><td class="mono">10 m²</td><td class="mono">~8.6 m²</td><td>The size of one object on the ground. Aim for a few m² to a few tens of m², and small enough that the narrowest thing you map gets objects of its own. Sets Num Segments from the image's valid area.</td></tr>
+    <tr><td>Num Segments</td><td class="mono">100–2,000,000</td><td>from Object Size</td><td class="mono">60,000</td><td>The same choice as a count. Edit either box; the other follows. Whichever you set last is kept when you resample.</td></tr>
+    <tr><td>Compactness</td><td class="mono">0.01–1.00</td><td class="mono">0.15</td><td class="mono">0.15</td><td>Keep 0.15. Lower only if segments cut across clear edges.</td></tr>
+    <tr><td>Sigma (Smoothing)</td><td class="mono">0–10</td><td class="mono">2.5</td><td class="mono">2.5</td><td>Keep 2.5. Raise if segments look ragged or grid-like.</td></tr>
+    <tr><td>Colour/texture at</td><td class="mono">native–working</td><td>working grid</td><td class="mono">3.30 cm/px</td><td>Set to the native resolution when the image allows: texture then comes from full detail (<a href="concepts.html#feature-res">Part B, 5.3</a>). Shown for images in projected coordinates.</td></tr>
+    <tr><td>Segmentation Engine</td><td>CPU · GPU</td><td>GPU if found</td><td>GPU</td><td>Use GPU when available, and keep the same engine for the whole project.</td></tr>
+  </tbody>
+</table></div>
+<ol class="steps">
+  <li>Set <span class="ui">Object Size</span> (or type a segment count) and the other controls above. Read the plan line under Num Segments: it confirms the object size in m² and pixels, and whether the run will be done in one go or as <em>N tiles</em>.</li>
+  <li>Click <span class="ui">Run Segmentation</span>. Lite Classify checks memory first. The console counts through the steps: segmentation (tile by tile if needed), display layers, polygons, features, neighbour features and height above ground.</li>
+  <li>When it finishes, the console prints the object count and time, and the app opens Tab 2.</li>
+  <li>Return to Tab 1 and tick <span class="ui">Show Segment Boundaries</span> to inspect the result over the image.</li>
+</ol>
+<figure>
+  <img src="img/view_raw_borders.jpg" alt="Segment boundaries over the junction crop">
+  <figcaption><b>Judging the segmentation.</b> Zoom to a few roofs, crowns and tracks. Good segments follow real edges and never straddle two classes. A roof cut into a few pieces is fine; a piece that is half roof and half road is not.</figcaption>
+</figure>
+<div class="note"><p><strong>Checklist before you move on.</strong> (1) No segment mixes two of your classes. (2) The smallest things you want to map, such as narrow tracks, a stream or single crowns, get their own segments. (3) Large uniform areas are not shattered into hundreds of slivers. If (1) or (2) fails, raise Num Segments. If only (3) fails, you can live with it.</p></div>
+
+<h2 id="discover"><span class="num">8</span>Tab 2 · Discover classes</h2>
+<p>Discover is optional, but it is the fastest way to a good class list and a first set of training samples. You can skip straight to Tab 3 and label from scratch.</p>
+
+<h3 id="find">8.1 Find groups</h3>
+<ol class="steps">
+  <li>Under <span class="ui">Find Groups</span>, keep both <span class="ui">Appearance (deep features, DINOv2)</span> and <span class="ui">Colour, texture, shape &amp; height</span> ticked.</li>
+  <li>Set <span class="ui">Number of groups</span> (5–60, default 30) to well above the number of classes you expect. The example asked for 20 for an expected six or seven classes.</li>
+  <li>Keep <span class="ui">Leave out segments at the image edge</span> ticked: their patches are partly empty and would group by that.</li>
+  <li>Click <span class="ui">Find Groups</span>. The first run computes the DINOv2 appearance of every segment (the slow part, done once per segmentation) and then clusters. Later runs with other settings reuse it.</li>
+</ol>
+
+<h3 id="review">8.2 Review a group</h3>
+<p>The <span class="ui">Groups</span> list shows one card per group (<em>Group_01</em>, <em>Group_02</em>…, largest first) with its colour, segment count and a strip of sample tiles. Each tile shows the segment outlined in cyan in the middle third, with its surroundings. Filter it (<em>All, Unnamed, Named, Ignored</em>) and sort it (<em>Largest first</em>, or <em>Look-alikes together</em> to put similar groups side by side). Click a card to open it in the middle panel.</p>
+<ul>
+  <li>The <strong>gallery</strong> scrolls through every tile of the group, a square of image around each segment with its outline in cyan. Double-click a tile to fly the map to it.</li>
+  <li>The <strong>map</strong> on the right shows the selected group, all groups, or named groups only (<span class="ui">View</span>), with an on/off <span class="ui">Group overlay</span>, its opacity, and <span class="ui">Segment edges</span>.</li>
+  <li>Ask of each group: <em>is this one cover type?</em> If yes, name it. If it is two, split it. If it is the same as another, merge them.</li>
+</ul>
+<div class="strip c2">
+  <figure><img src="img/disc_groups_crop.jpg" alt="Group colours over the junction crop"><figcaption><b>All groups</b> over the junction crop.</figcaption></figure>
+  <figure><img src="img/disc_groups_scene.jpg" alt="Groups over the whole survey"><figcaption><b>Whole scene.</b> Large groups follow canopy and stand types; small ones pick out roofs, refuse and bare ground.</figcaption></figure>
+</div>
+
+<h3 id="name">8.3 Name groups</h3>
+<ol class="steps">
+  <li>With a group selected, pick a class in <span class="ui">Name this group</span>, or type a new name and click <span class="ui">Add Class</span>. A new class is created at once, with a suggested colour from its name (trees dark green, grass yellow-green, water blue, buildings red, …), and appears in Tab 3 too: the two tabs share one class list.</li>
+  <li>Several groups can share a name. The example named 12 of its 22 groups: five Agricultural, two Natural canopy, two Built-up, and one each of Grass, Bare soil and Solid waste. Ctrl-select several cards to name them together.</li>
+  <li>Right-click a class in the dropdown to rename it, change its colour or remove it.</li>
+</ol>
+<p>Leave a group unnamed when you are unsure; unnamed groups simply do not become training samples.</p>
+
+<h3 id="tidy">8.4 Merge, split, ignore and move</h3>
+<div class="table-wrap"><table>
+  <thead><tr><th>Tool</th><th>Use it when</th><th>How</th></tr></thead>
+  <tbody>
+    <tr><td><span class="ui">Merge…</span></td><td>Two or more groups are the same cover type</td><td>Ctrl-select the cards, or pick from the suggested look-alikes, then Merge Ticked.</td></tr>
+    <tr><td><span class="ui">Split…</span></td><td>A group mixes two cover types</td><td>Split into 2–4 by <em>Appearance</em>, <em>Height above surroundings (DSM)</em> or <em>Brightness</em>. A preview shows every tile of each part before you apply.</td></tr>
+    <tr><td><span class="ui">Ignore Group</span></td><td>A group is noise: shadows, edge artefacts, mixed odds and ends</td><td>It stays out of training and out of the views.</td></tr>
+    <tr><td><span class="ui">Find Similar Elsewhere</span></td><td>You want look-alikes from other groups</td><td>Lists the nearest segments outside the group to move in.</td></tr>
+    <tr><td>Move tiles</td><td>A few tiles are in the wrong group</td><td>Select tiles (click, Ctrl/Shift-click), right-click, move to a group, a new group, or out of all groups. Right-clicking a segment on the map does the same.</td></tr>
+  </tbody>
+</table></div>
+<p>In the example, <strong>Solid waste</strong> came from splitting a bare-ground group by appearance: refuse and the cleared apron around it had been grouped together.</p>
+
+<h3 id="send">8.5 Send named groups to Classification</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Send Named Groups to Classification</span>. The dialog lists each class with its groups.</li>
+  <li>Set <span class="ui">Typical segments per group</span> (default 12): the segments nearest each group's centre, so the most representative ones.</li>
+  <li>Choose <em>Add to existing training samples</em> or <em>Replace the existing samples of these classes</em>, then <span class="ui">Send and Open Classification</span>.</li>
+</ol>
+<p>Then <span class="ui">File › Save Workspace</span>: groups and appearance features are saved with the session.</p>
+
+<h2 id="samples"><span class="num">9</span>Tab 3 · Classes and training samples</h2>
+
+<h3 id="classes">9.1 Classes</h3>
+<ol class="steps">
+  <li>Classes created in Discover are already here. To add one, type a name in <em>Enter new class name…</em>, click <span class="ui">Add</span> and pick a colour.</li>
+  <li>The order matters: it sets each class's value in the exported raster. The example's order: Natural canopy = 1, Agricultural, Grass, Bare soil, Solid waste, Built-up, Stream = 7.</li>
+</ol>
+<p>Double-click a class to rename it or change its colour. <span class="ui">Merge Selected Classes</span> folds two or more classes into one (select them with <kbd>Ctrl</kbd>-click). <span class="ui">Remove Selected Class</span> deletes a class; <span class="ui">Clear Selected Class</span> and <span class="ui">Clear All Training Data</span> drop samples but keep classes. All four ask before acting, and an existing classified map is updated to match.</p>
+
+<h3 id="click">9.2 Click and paint samples</h3>
+<ol class="steps">
+  <li>Click a class in the list to make it active. It turns bold.</li>
+  <li><strong>Click</strong> an object in the viewer to add it as a sample of that class. It is tinted in the class colour, and the count beside the class name goes up.</li>
+  <li><strong>Ctrl + drag</strong> to paint: every object the cursor crosses joins the active class.</li>
+  <li>Click a sample again to remove it.</li>
+</ol>
+
+<h3 id="grow">9.3 Grow a selection by similarity</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Selection Mode: OFF</span> to turn it on. Clicks now select instead of labelling; selected objects show in cyan.</li>
+  <li>Click one object as a seed, then drag <span class="ui">Grow Tolerance</span> up. The selection spreads through touching objects similar to the seed.</li>
+  <li>Click <span class="ui">Assign Selection to Active Class</span>, or <span class="ui">Clear Selection</span>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes selection steps.</li>
+</ol>
+<details class="why"><summary>How the tolerance works, and why it can leak</summary>
+<p>Similarity uses six features: mean red, green, blue and brightness, GLCM contrast and homogeneity. Each is divided by its spread across the whole scene, and a neighbour joins if its distance to the seed's average is within <em>tolerance</em> × √6. Growth spreads through any touching object that passes, so a high tolerance can cross into different-looking ground. Start low and raise it in small steps.</p>
+</details>
+
+<h3 id="merge">9.4 Merge fragments into one object</h3>
+<p>SLIC cuts large objects (a long roof, a big crown) into pieces, and each piece then has the wrong area and shape. Merge them so the classifier sees the real outline.</p>
+<ol class="steps">
+  <li>With Selection Mode on, select the pieces (click, grow, or Ctrl+drag).</li>
+  <li>Click <span class="ui">Merge Selection into Object</span>. The pieces become one object, its features are recomputed, and its neighbours' context features are updated. If the pieces were samples of different classes, the console warns and the first class in the list wins.</li>
+</ol>
+<div class="compare" data-label="Compare a roof before and after merging">
+  <img src="img/merge_before.jpg" alt="A long roof split into many segments, selected in cyan">
+  <div class="top"><img src="img/merge_after.jpg" alt="The same roof as a single merged object"></div>
+  <div class="bar"></div><span class="tag l">Selected: <span data-d="merge.pieces"></span> pieces</span><span class="tag r">Merged: one object</span>
+</div>
+<p class="caption" style="margin-top:8px">A <span data-d="merge.area_m2" data-fmt="f0"></span> m² roof that SLIC split into <span data-d="merge.pieces"></span> pieces. Merging cannot be undone, short of re-running segmentation.</p>
+
+<h3 id="similar">9.5 Find similar segments, and what to label next</h3>
+<ul>
+  <li><strong>Right-click an object › Find Similar Segments</strong> lists the 20 objects nearest to it in appearance and features. Tick the right ones and add them to a class. The dialog stays open, so you can keep going.</li>
+  <li><strong><span class="ui">What to Label Next…</span></strong> (after training) lists the objects the classifier is least sure about, at most two per Discover group so they are spread across the scene. Each shows its two leading classes. Labelling these teaches the model the most per click.</li>
+  <li><strong>Right-click › Show Its Group</strong> jumps to the object's Discover group.</li>
+</ul>
+
+<h3 id="where">9.6 Where to put samples</h3>
+<figure>
+  <img src="img/training_samples.jpg" alt="The survey with every training object filled in its class colour">
+  <figcaption><b>The worked example's training objects,</b> filled in their class colours: <span data-d="training.total" data-fmt="int"></span> in all, under 1% of the <span data-d="segmentation.segments" data-fmt="int"></span> objects.</figcaption>
+</figure>
+<ul>
+  <li><strong>Spread samples across the whole scene,</strong> not in one cluster. Light, shade and slope change from place to place.</li>
+  <li><strong>Cover every look a class has.</strong> Bare soil covers graded earthworks, compacted tracks and the cleared apron; Built-up covers teal, red and grey roofs, the road and concrete yards.</li>
+  <li><strong>Only label objects you are sure of.</strong> One wrong sample teaches the model a wrong rule. Skip objects that straddle two classes, such as a crown hanging over a track.</li>
+  <li><strong>Aim for at least as many samples per class as there are features</strong> (44 here) for a trustworthy separability check. The example's Stream had 20, and the check flagged it.</li>
+</ul>
+
+<h2 id="classify"><span class="num">10</span>Tab 3 · Train, classify, generalise and export</h2>
+
+<h3 id="sep">10.1 Check class separability</h3>
+<p>Click <span class="ui">Check Class Separability</span> before training. The window shows the pairwise table, the closest pairs with a one-line reason each, and a signature plot for the pair you pick in <span class="ui">Signature plot pair</span>. <span class="ui">Copy Image</span> puts it on the clipboard, and it is saved as <code>class_separability.png</code>. How to read it: <a href="concepts.html#separability">Part B, 5.7</a>.</p>
+
+<h3 id="train">10.2 Train and classify</h3>
+<ol class="steps">
+  <li>Tick <span class="ui">Use deep appearance features</span> to give the classifier the 20 DINOv2 components as well (needs Find Groups with Appearance run once). The example used it: 44 features.</li>
+  <li>Click <span class="ui">Train Classifier</span>. You need samples in at least two classes. The console lists every feature used and the number of samples.</li>
+  <li>Click <span class="ui">Classify All Segments</span>. Every object gets a class within seconds, the sieve is applied, and the view switches to the classified map.</li>
+</ol>
+
+<h3 id="views">10.3 Check with the views</h3>
+<p>The view buttons switch what the viewer shows: <span class="ui">Raw Ortho</span> (it becomes the Raw/Classified toggle after classifying), <span class="ui">Segmented</span> (objects in their mean colour) and <span class="ui">Blend Overlay</span> (classes over the image). The opacity slider and switch control the overlay; the blend mode is <em>Multiply</em> (tints the image and keeps its texture, the default) or <em>Normal</em>. Flip between them often: errors that hide in one view jump out in another.</p>
+<p>Drag across each pair below to compare the image with the worked example's map, at five places in the survey:</p>
+<div class="cgallery">
+  <div class="compare" data-label="Compare orthomosaic and classified map">
+    <img src="" alt="">
+    <div class="top"><img src="" alt=""></div>
+    <div class="bar"></div><span class="tag l">Orthomosaic</span><span class="tag r">Classified</span>
+  </div>
+  <p class="cg-cap"></p>
+  <div class="g-thumbs" role="tablist" aria-label="Locations">
+    <button type="button" data-thumb="img/view_raw.jpg" data-before="img/view_raw.jpg" data-after="img/view_classified.png" data-alt-before="Road junction, true colour" data-alt-after="Road junction, classified" data-cap="<b>Road junction and settlement.</b> Roofs and the road are Built-up, tracks and yards Bare soil; canopy and grass fill the rest.">Junction</button>
+    <button type="button" data-thumb="img/view_raw_facility.jpg" data-before="img/view_raw_facility.jpg" data-after="img/view_classified_facility.png" data-alt-before="Disposal site, true colour" data-alt-after="Disposal site, classified" data-cap="<b>Disposal site.</b> Exposed refuse is one compact Solid waste patch; its margin, where refuse grades into soil, goes to Bare soil, which is where Solid waste loses area.">Disposal site</button>
+    <button type="button" data-thumb="img/view_raw_stream.jpg" data-before="img/view_raw_stream.jpg" data-after="img/view_classified_stream.png" data-alt-before="Stream corridor, true colour" data-alt-after="Stream corridor, classified" data-cap="<b>Stream corridor.</b> The channel is found where it is open and lost under overhanging crowns or where it runs dry: reliable where mapped, incomplete overall.">Stream</button>
+    <button type="button" data-thumb="img/view_raw_agro.jpg" data-before="img/view_raw_agro.jpg" data-after="img/view_classified_agro.png" data-alt-before="Agroforestry stand, true colour" data-alt-after="Agroforestry stand, classified" data-cap="<b>Agroforestry stand.</b> Regular coconut and banana crowns are Agricultural; the boundary with natural canopy follows the planting edge.">Agroforestry</button>
+    <button type="button" data-thumb="img/view_raw_mosaic.jpg" data-before="img/view_raw_mosaic.jpg" data-after="img/view_classified_mosaic.png" data-alt-before="Grass and canopy mosaic, true colour" data-alt-after="Grass and canopy mosaic, classified" data-cap="<b>Grass and canopy mosaic.</b> Open grass interleaved with regrowth and canopy, the finest-grained part of the map.">Mosaic</button>
+  </div>
+</div>
+
+<h3 id="loop">10.4 The retraining loop</h3>
+<p>Retraining is the core of the method. <a href="concepts.html#retraining">Part B, 5.8</a> replays it on the example's own labels.</p>
+<ol class="steps">
+  <li><strong>Scan the whole map</strong> in Blend Overlay at 50–70% opacity. Note each <em>kind</em> of error: "dry stream bed read as Bare soil", "banana edge read as Natural canopy".</li>
+  <li><strong>Add a few correct samples of each kind</strong>, in different parts of the scene. Use What to Label Next for the cases the model itself is unsure about.</li>
+  <li><strong>Train Classifier</strong>, then <strong>Classify All Segments</strong> again. All samples, old and new, are used.</li>
+  <li><strong>Repeat</strong> until a round changes little. Then measure on Tab 4 instead of judging by eye.</li>
+</ol>
+
+<h3 id="mmu">10.5 Set a minimum mapping unit</h3>
+<p>Under <span class="ui">Post-Classification Generalization</span>, set the <span class="ui">MMU</span> either in pixels (0–2,000) or as an area in m²; the two boxes stay in step with the working grid (at 10 cm, 1,000 px = 10 m²). Patches of one class smaller than this are absorbed by the class around them. The map updates when you release the slider or leave a box. The example used 0; see <a href="concepts.html#sieve">Part B, 5.9</a>.</p>
+
+<h3 id="export">10.6 Export and save</h3>
+<ol class="steps">
+  <li>Click <span class="ui">Export Final Classified TIF</span>. The dialog suggests <code>&lt;name&gt;_classified.tif</code> in the workspace folder.</li>
+  <li>Lite Classify writes a single-band GeoTIFF (value 1 = first class in the list, 2 = second, …, 0 = no data) with your colours embedded, plus a <code>.qml</code> style file of the same name for QGIS.</li>
+  <li><span class="ui">File › Save Workspace</span> (<kbd>Ctrl</kbd>+<kbd>S</kbd>) keeps the session: segments, features, appearance features, groups, classes, training samples, the classification, accuracy points and iterations.</li>
+</ol>
+<div class="note"><p><strong>Export again after you retrain.</strong> The exported GeoTIFF is a snapshot. Saving the workspace does not update it; the accuracy assessment, however, always uses the current map.</p></div>
+<figure>
+  <img src="img/final_map.png" alt="The final classified map of the whole survey" style="max-width:min(760px,100%)">
+  <ul class="classes" aria-label="Map legend">
+    <li><i style="background:var(--c-canopy)"></i>1 Natural canopy</li>
+    <li><i style="background:var(--c-agri)"></i>2 Agricultural</li>
+    <li><i style="background:var(--c-grass)"></i>3 Grass</li>
+    <li><i style="background:var(--c-bare)"></i>4 Bare soil</li>
+    <li><i style="background:var(--c-waste)"></i>5 Solid waste</li>
+    <li><i style="background:var(--c-built)"></i>6 Built-up</li>
+    <li><i style="background:var(--c-stream)"></i>7 Stream</li>
+  </ul>
+  <figcaption><b>The worked example's map,</b> with the raster value each class receives.</figcaption>
+</figure>
+
+<h2 id="assess"><span class="num">11</span>Tab 4 · Assess accuracy</h2>
+
+<h3 id="acc-source">11.1 Choose a reference source</h3>
+<p>Under <span class="ui">Ground Truth Source</span>, pick one:</p>
+<ul>
+  <li><strong>Import Ground Truth CSV</strong>: field points you collected. Browse to the CSV; tick <span class="ui">Also generate expert-visual points</span> to add photo-interpreted points on top.</li>
+  <li><strong>No Ground Truth Available (Generate Expert Points)</strong>: Lite Classify places random points for you to label from the image.</li>
+</ul>
+<p>A ground-truth CSV needs an x column, a y column and a class column, with coordinates in the orthomosaic's own coordinate system. Header names are matched loosely (x/lon/easting, y/lat/northing, class/reference_class/label); class names must match Tab 3 exactly, or the import stops and lists the mismatches.</p>
+
+<h3 id="acc-design">11.2 Choose a design and generate points</h3>
+<ol class="steps">
+  <li>Under <span class="ui">Random Point Generation</span>, pick a <span class="ui">Design</span>: <em>Simple random</em>, or <em>Stratified by map class</em> (<a href="concepts.html#accuracy">Part B, 5.10</a>).</li>
+  <li>For stratified, set <span class="ui">Min per Class</span> (default 50). Each class gets the larger of that minimum and its area share of <span class="ui">Points to Add</span>. The strata are the classes of the current map, so classify first.</li>
+  <li>Click <span class="ui">Generate</span>. Points never fall on training objects. A stratified sample records each point's stratum and a seed, so it can be reproduced; there can be one stratified sample per map.</li>
+</ol>
+<p class="small">The example drew a stratified sample with a minimum of 50 per class on its nine-class map at the time: <span data-d="final.n"></span> points, seed <span data-d="strata.seed"></span>.</p>
+
+<h3 id="acc-label">11.3 Label the points</h3>
+<ol class="steps">
+  <li>Double-click a point in the list, or press <kbd>.</kbd> and <kbd>,</kbd>, to fly to it. The viewer shows the raw image only.</li>
+  <li>Decide what is under the point. Right-click it and choose a class, or tick several points and use <span class="ui">Assign checked to</span>.</li>
+  <li>Use <span class="ui">Save Points</span> as you go; a long labelling session is real work.</li>
+</ol>
+<div class="note"><p><strong>Label what is under the point, not what is nearby.</strong> If the point sits on a roof edge under an overhanging crown, label what covers that spot from above. If you truly cannot tell, delete the point rather than guess. Ideally, someone other than the person who picked the training samples does the labelling.</p></div>
+
+<h3 id="acc-run">11.4 Run the assessment</h3>
+<p>Click <span class="ui">Run Accuracy Assessment</span>. Unlabelled points are left out (the warning says how many). Lite Classify reads each point's class from the current map with the sieve applied, the same map Export writes. The results window opens beside the main window, so you can keep working while it is open. It writes to the workspace folder:</p>
+<ul>
+  <li><code>accuracy_report.csv</code>: the error matrix with totals, user's and producer's accuracy, overall accuracy, sample size and a source note; for a stratified sample, also the area-weighted estimates, estimated class areas and 95% confidence intervals.</li>
+  <li><code>accuracy_matrix.png</code>: the matrix as a figure.</li>
+  <li><code>accuracy_points.gpkg</code>: every point with its reference class, map class, source and stratum, ready for GIS.</li>
+</ul>
+
+<h3 id="acc-read">11.5 Read the result</h3>
+<div class="demo">
+  <p class="tagline">The worked example's own assessment</p>
+  <p>The matrix below is the example's <code>accuracy_report.csv</code>: <span data-d="final.n"></span> stratified points labelled by photo-interpretation of the orthomosaic with the classification hidden. Cells are point counts. The user's and producer's accuracies in the margins, and the overall accuracy, are the area-weighted estimates with their 95% confidence intervals. Photo-interpreted points are reference data, not field-checked ground truth.</p>
+</div>
+<div class="table-wrap" id="confusion-matrix"></div>
+<ul>
+  <li><strong>Overall accuracy is <span data-d="final.oa_aw" data-fmt="pct"></span> ± <span data-d="final.oa_aw_ci" data-mul="100" data-fmt="f1"></span></strong> (area-weighted), against <span data-d="final.oa" data-fmt="pct"></span> from raw counts. The three big classes, which hold about 94% of the map, all reach 89–92% on both measures.</li>
+  <li><strong>The largest confusion is Natural canopy ↔ Agricultural</strong>: 12 reference canopy points mapped as Agricultural and 7 the other way. These are the hardest calls for the interpreter too.</li>
+  <li><strong>Bare soil is the weak class</strong> (user's <span data-d="final.est.Bare soil.ua" data-fmt="pct0"></span>): its row draws errors from every other class, and it is over-mapped. Bare soil here is a family of surfaces: tracks, earthworks, dry stream bed, the apron.</li>
+  <li><strong>Solid waste and Stream are reliable but incomplete</strong>: almost everything the map calls Solid waste or Stream is right (user's 98% and 100%), but the map finds only about three-quarters of each. Four of Stream's five misses went to Bare soil: a dry bed, seen from above.</li>
+</ul>
+<div class="table-wrap"><table>
+  <thead><tr><th>Class</th><th class="num">Mapped (ha)</th><th class="num">Estimated (ha)</th><th class="num">95% CI (ha)</th><th>Reading</th></tr></thead>
+  <tbody>
+    <tr><td><span class="sw" style="background:var(--c-canopy)"></span>Natural canopy</td><td class="num">22.17</td><td class="num">21.34</td><td class="num">±2.62</td><td>Within the interval</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-agri)"></span>Agricultural</td><td class="num">20.97</td><td class="num">20.85</td><td class="num">±2.57</td><td>Within the interval</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-grass)"></span>Grass</td><td class="num">8.53</td><td class="num">9.56</td><td class="num">±1.44</td><td>Within the interval</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-bare)"></span>Bare soil</td><td class="num">1.44</td><td class="num">0.98</td><td class="num">±0.35</td><td>Over-mapped by about half</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-waste)"></span>Solid waste</td><td class="num">0.44</td><td class="num">0.61</td><td class="num">±0.14</td><td>Under-mapped (the margin)</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-built)"></span>Built-up</td><td class="num">1.08</td><td class="num">1.19</td><td class="num">±0.44</td><td>Within the interval</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-stream)"></span>Stream</td><td class="num">0.10</td><td class="num">0.19</td><td class="num">±0.07</td><td>Under-mapped by about half</td></tr>
+  </tbody>
+</table></div>
+<p class="small">The estimated areas correct the mapped areas for the errors the sample found. For anything reported in hectares, quote the estimate and its interval, not the mapped area.</p>
+<div class="gallery">
+  <figure class="g-main"><img src="" alt=""><figcaption></figcaption></figure>
+  <div class="g-bar">
+    <button class="g-step" type="button" data-step="-1" aria-label="Previous">‹</button>
+    <div class="g-thumbs" role="tablist" aria-label="Accuracy figures">
+      <button type="button" data-thumb="img/reference_points.jpg" data-src="img/reference_points.jpg" data-alt="The reference points over the survey, coloured by labelled class, misses ringed in magenta" data-cap="<b>Where the misses are.</b> The reference points coloured by their labelled class; those the map gets wrong are ringed in magenta. Points cluster on small classes because the design gives each at least 50.">Points</button>
+      <button type="button" data-thumb="img/accuracy_matrix.jpg" data-src="img/accuracy_matrix.jpg" data-alt="The app's accuracy matrix figure" data-cap="<b>The app's own figure</b> (<code>accuracy_matrix.png</code>), as shown in the results window.">App figure</button>
+    </div>
+    <span class="g-count"></span>
+    <button class="g-step" type="button" data-step="1" aria-label="Next">›</button>
+  </div>
+</div>
+<p><strong>Next retraining target:</strong> the Bare soil row. Split it into the surfaces it mixes (or accept it as a mixed class and say so), and add Stream samples where the bed is dry.</p>
+
+<h3 id="iterations">11.6 Iterations: keep and roll back rounds</h3>
+<p>Every <span class="ui">Run Accuracy Assessment</span> adds a row to the <span class="ui">Iterations</span> list: its number, overall accuracy, and how many samples and points it used. Each row keeps everything that run was based on: the training samples, class names, Discover group names, accuracy points and the classified map.</p>
+<ul>
+  <li><span class="ui">Results</span> (or double-click) shows that run's matrix again.</li>
+  <li><span class="ui">Restore</span> returns the session to that iteration, undoing later changes that made things worse. Tick <em>First keep the current state in the list as a checkpoint</em> to be able to come back.</li>
+  <li><span class="ui">Delete</span> removes a row. Iterations are saved with the workspace and cleared when you segment again.</li>
+</ul>
+
+<nav class="pager" aria-label="Previous and next part">
+  <a href="concepts.html"><span class="k">← Part B</span><b>How Lite Classify works</b></a>
+  <a class="next" href="reference.html"><span class="k">Part D →</span><b>Reference</b></a>
+</nav>
+</main>
+</div>
+<footer class="foot">Lite Classify User Manual · by LeoBar · figures and numbers generated from the worked example by <code>docs/manual/tools</code>.</footer>
+<script data-goatcounter="https://liteland.goatcounter.com/count"
+        async src="https://gc.zgo.at/count.js"></script>
+<script src="manual_data.js"></script>
+<script src="manual.js"></script>
+</body>
+</html>

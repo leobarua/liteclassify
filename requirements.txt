@@ -1,0 +1,41 @@
+# Lite Classify - Python dependencies
+# Pinned to the versions on the development machine (Python 3.13, Windows 11).
+#
+#   python -m venv .venv
+#   .venv\Scripts\activate
+#   pip install -r requirements.txt
+
+# PyTorch with CUDA 12.4 (GPU SLIC, DINOv2). For a machine without an NVIDIA GPU,
+# use requirements-cpu.txt instead; the app falls back to CPU.
+--extra-index-url https://download.pytorch.org/whl/cu124
+
+# Core numerics / image processing
+numpy==2.5.1
+scipy==1.18.0
+pandas==3.0.3
+scikit-image==0.26.0
+scikit-learn==1.9.0
+joblib==1.5.3
+
+# Geospatial
+rasterio==1.5.2
+affine==2.4.0
+geopandas==1.1.4
+shapely==2.1.2
+pyogrio==0.13.0
+pyproj==3.7.2
+rasterstats==0.21.0
+
+# GUI
+PySide6==6.11.1
+
+# Memory checks before load / resample / segmentation
+psutil==7.2.2
+
+# GPU acceleration (optional at runtime)
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+
+# Building the .exe (build_exe.py, *.spec)
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6

@@ -1,0 +1,36 @@
+# Lite Classify - Python dependencies, CPU-only edition (no NVIDIA GPU needed)
+# Pinned to the versions on the development machine (Python 3.13, Windows 11).
+
+# Same as requirements.txt but with PyTorch's CPU-only wheels: about 2 GB smaller.
+#   python -m venv .venv-cpu  &&  .venv-cpu\Scripts\pip install -r requirements-cpu.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Core numerics / image processing
+numpy==2.5.1
+scipy==1.18.0
+pandas==3.0.3
+scikit-image==0.26.0
+scikit-learn==1.9.0
+joblib==1.5.3
+
+# Geospatial
+rasterio==1.5.2
+affine==2.4.0
+geopandas==1.1.4
+shapely==2.1.2
+pyogrio==0.13.0
+pyproj==3.7.2
+rasterstats==0.21.0
+
+# GUI
+PySide6==6.11.1
+
+# Memory checks before load / resample / segmentation
+psutil==7.2.2
+
+# PyTorch, CPU-only build (DINOv2 features; segmentation uses the CPU engine)
+torch==2.6.0+cpu
+
+# Building the .exe (build_exe.py, *.spec)
+pyinstaller==6.21.0
+pyinstaller-hooks-contrib==2026.6
