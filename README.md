@@ -9,7 +9,7 @@ design-based sample.
 
 ![A classified map produced with Lite Classify](docs/manual/img/final_map.png)
 
-- **User manual:** <https://leobarua.github.io/liteclassify/>
+- **User manual:** <https://leobarua.github.io/liteclassify/manual/>
 - **Download:** two offline Windows installers, on
   [Google Drive](https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link)
   - **CPU** (about 320 MB): for any PC
