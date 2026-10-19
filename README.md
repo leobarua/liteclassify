@@ -72,7 +72,7 @@ credit line below, be marked as modified, and use a different name:
 > Based on Lite Classify by L. D. Barua (LeoBar) — https://github.com/leobarua/liteclassify
 
 For other licensing terms, see [`COMMERCIAL-LICENSING.md`](COMMERCIAL-LICENSING.md).
-Contributions require agreeing to the [CLA](CLA.md).
+To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md); contributions require agreeing to the [CLA](CLA.md).
 
 ## Citing
 
