@@ -1,8 +1,8 @@
-# To do: given names / ORCID; when the paper is out, fill in preferred-citation's journal,
-# volume and DOI. On each release, update version, date-released and the version DOI below
-# (the concept DOI stays: it always resolves to the newest version).
+# To do: given names / ORCID. When the paper is out, uncomment preferred-citation at the end
+# and fill in its journal, year and DOI. On each release, update version, date-released and
+# the version DOI below (the concept DOI stays: it always resolves to the newest version).
 cff-version: 1.2.0
-message: "If you use Lite Classify, please cite the software and the paper below."
+message: "If you use Lite Classify, please cite it using these metadata."
 title: "Lite Classify"
 abstract: >-
   A desktop application for geographic object-based image analysis (GEOBIA) of
@@ -36,12 +36,12 @@ keywords:
   - self-supervised vision transformer
   - Random Forest
   - accuracy assessment
-preferred-citation:
-  type: article
-  title: "Lite Classify: an open-source geographic object-based image analysis application for ultra-high-resolution UAS orthomosaics"
-  authors:
-    - family-names: Barua
-      given-names: "L. D."
-  # journal: ""
-  # year: 2027
-  # doi: ""
+# preferred-citation:
+#   type: article
+#   title: "Lite Classify: an open-source geographic object-based image analysis application for ultra-high-resolution UAS orthomosaics"
+#   authors:
+#     - family-names: Barua
+#       given-names: "L. D."
+#   journal: ""
+#   year: 2027
+#   doi: ""
