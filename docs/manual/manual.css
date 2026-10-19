@@ -410,3 +410,6 @@ footer.foot { max-width: 1320px; margin: 0 auto; padding: 24px 16px 40px; border
 .getbar-soon { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; padding: 8px 14px; border-radius: 8px;
   border: 1.5px solid #f2c230; color: #f2c230; font: 700 14px/1 var(--f-display); letter-spacing: .02em; }
 .getbar-soon svg { width: 16px; height: 16px; }
+
+/* citation block (Part D, 17) */
+.cite { margin: 0 0 1em; padding: 10px 14px; border-left: 3px solid var(--mark); background: var(--surface); overflow-wrap: anywhere; }

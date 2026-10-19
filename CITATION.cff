@@ -1,5 +1,6 @@
-# Draft. Before release: fill in given names / ORCIDs, the version and date, and the
-# Zenodo DOI; when the paper is out, fill in preferred-citation's journal, volume and DOI.
+# To do: given names / ORCID; when the paper is out, fill in preferred-citation's journal,
+# volume and DOI. On each release, update version, date-released and the version DOI below
+# (the concept DOI stays: it always resolves to the newest version).
 cff-version: 1.2.0
 message: "If you use Lite Classify, please cite the software and the paper below."
 title: "Lite Classify"
@@ -15,11 +16,18 @@ authors:
     affiliation: "Makiling Center for Mountain Ecosystems, College of Forestry and Natural Resources, University of the Philippines Los Baños"
     # orcid: "https://orcid.org/0000-0000-0000-0000"
 repository-code: "https://github.com/leobarua/liteclassify"
-url: "https://leobarua.github.io/liteclassify/"
+url: "https://leobarua.github.io/liteclassify/manual/"
 license: GPL-3.0-only
 version: "1.0"
-# date-released: "2026-MM-DD"
-# doi: "10.5281/zenodo.XXXXXXX"
+date-released: "2026-10-19"
+doi: "10.5281/zenodo.23462352"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23462352"
+    description: "Concept DOI: all versions of Lite Classify (resolves to the newest)"
+  - type: doi
+    value: "10.5281/zenodo.23462353"
+    description: "Version DOI: Lite Classify 1.0"
 keywords:
   - GEOBIA
   - object-based image analysis

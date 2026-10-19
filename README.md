@@ -1,5 +1,7 @@
 # Lite Classify
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23462352.svg)](https://doi.org/10.5281/zenodo.23462352)
+
 **Object-based land-cover mapping of drone orthomosaics, offline on one Windows workstation.**
 
 Lite Classify splits an RGB orthomosaic into objects, describes each one by its color, texture,
@@ -76,5 +78,10 @@ To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md); contributions require a
 
 ## Citing
 
-If you publish work made with Lite Classify, please cite it as given in
-[`CITATION.cff`](CITATION.cff) (on GitHub: "Cite this repository").
+If you publish work made with Lite Classify, please cite the version you used:
+
+> Barua, L. D. (2026). *Lite Classify* (Version 1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23462353
+
+To cite all versions, use the concept DOI
+[10.5281/zenodo.23462352](https://doi.org/10.5281/zenodo.23462352). Other formats (BibTeX, APA)
+are under "Cite this repository" on GitHub, generated from [`CITATION.cff`](CITATION.cff).
