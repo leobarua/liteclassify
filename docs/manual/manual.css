@@ -116,6 +116,7 @@ kbd {
 .toc a:hover { background: var(--tint); color: var(--ink); }
 .toc a.active { background: var(--surface); color: var(--ink); box-shadow: inset 3px 0 0 var(--mark); }
 .toc ol ol { margin: 2px 0 6px 30px; }
+.toc-meta { margin: 24px 0 0; padding: 0 8px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
 .toc ol ol a { grid-template-columns: 1fr; font-size: 13px; padding: 3px 8px; }
 
 main { min-width: 0; padding-top: 40px; }
@@ -355,6 +356,7 @@ footer.foot { max-width: 1320px; margin: 0 auto; padding: 24px 16px 40px; border
   .frame { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .toc { position: static; max-height: none; padding-top: 24px; border-bottom: 1px solid var(--rule); padding-bottom: 14px; }
   .toc ol ol { display: none; }
+  .toc-meta { display: none; }
   .fx { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 700px) {

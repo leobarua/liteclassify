@@ -389,3 +389,32 @@
     pick(0);
   });
 })();
+
+/* Release download count under the contents: Lite Classify installer downloads summed over
+   every GitHub release, from GitHub's public API (60 calls an hour per visitor, so the figure
+   is cached for the browser session). Stays hidden if the request fails. */
+(function () {
+  var wrap = document.getElementById("dl-wrap");
+  var out = document.getElementById("dl-count");
+  if (!wrap || !out) return;
+  function show(n) { out.textContent = n.toLocaleString("en-US"); wrap.hidden = false; }
+  try {
+    var cached = sessionStorage.getItem("liteclassify-downloads");
+    if (cached !== null) { show(Number(cached)); return; }
+  } catch (e) {}
+  if (!window.fetch) return;
+  fetch("https://api.github.com/repos/leobarua/liteclassify/releases?per_page=100", {
+    headers: { Accept: "application/vnd.github+json" }
+  }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (releases) {
+      var total = 0;
+      releases.forEach(function (rel) {
+        (rel.assets || []).forEach(function (a) {
+          if (/^LiteClassify-.*-Setup-.*\.exe$/i.test(a.name)) total += a.download_count || 0;
+        });
+      });
+      try { sessionStorage.setItem("liteclassify-downloads", String(total)); } catch (e) {}
+      show(total);
+    })
+    .catch(function () {});
+})();
