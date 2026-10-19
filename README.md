@@ -12,8 +12,8 @@ design-based sample.
 ![A classified map produced with Lite Classify](docs/manual/img/final_map.png)
 
 - **User manual:** <https://leobarua.github.io/liteclassify/manual/>
-- **Download:** two offline Windows installers, on
-  [Google Drive](https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link)
+- **Download:** two offline Windows installers, from the
+  [latest release](https://github.com/leobarua/liteclassify/releases/latest) (mirror on [Google Drive](https://drive.google.com/drive/folders/1PlURwlrhm_sJizCj98tNTSS8trRVmhcu?usp=drive_link))
   - **CPU** (about 320 MB): for any PC
   - **GPU** (about 1.8 GB): for PCs with an NVIDIA GPU, which run segmentation and DINOv2 faster
 
