@@ -231,12 +231,14 @@ def main():
     ext = (tr.c, tr.c + shape[1] * args.grid, tr.f - shape[0] * args.grid, tr.f)
     fig, ax = plt.subplots(figsize=(9, 9))
     ax.imshow(ga[::step, ::step], cmap="gray", extent=ext)
-    s = 1000.0                                            # 1 cm residual drawn as 10 m
+    # Arrow scale: the median residual drawn as 3 % of the frame width.
+    med = np.median(np.hypot(res[inl, 0], res[inl, 1]))
+    s = 0.03 * shape[1] * args.grid / max(med, 1e-6)
     ax.quiver(A[inl, 0], A[inl, 1], res[inl, 0] * s, res[inl, 1] * s, angles="xy",
               scale_units="xy", scale=1, color="#f65244", width=0.003)
     ax.plot(A[~inl, 0], A[~inl, 1], "x", color="#888", ms=4, label="outlier tiles")
     ax.ticklabel_format(useOffset=False, style="plain")
-    ax.set_title(f"Ortho residuals after similarity fit (1 cm drawn as {s / 100:.0f} m)")
+    ax.set_title(f"Ortho residuals after similarity fit (1 cm drawn as {s / 100:.1f} m)")
     ax.legend(loc="lower right")
     fig.savefig(os.path.join(args.out, "residuals.png"), dpi=130, bbox_inches="tight")
     if dz is not None:
