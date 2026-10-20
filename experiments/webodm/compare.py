@@ -19,8 +19,8 @@ products' CRS) and reports the same similarity fit on them.
     python experiments/webodm/compare.py --ortho-a met_ortho.tif --ortho-b odm_ortho.tif \
         --dsm-a met_dsm.tif --dsm-b odm_dsm.tif --out experiments/webodm/out
 
-Writes a summary (summary.txt), the per-tile vectors (tiles.csv) and two figures
-(residuals.png, dsm_diff.png) to --out. Not used by the app.
+Writes a summary (summary.txt), the per-tile vectors (tiles.csv) and, if matplotlib is
+installed, two figures (residuals.png, dsm_diff.png) to --out. Not used by the app.
 """
 import argparse
 import os
@@ -220,9 +220,13 @@ def main():
     with open(os.path.join(args.out, "summary.txt"), "w") as f:
         f.write(text + "\n")
 
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed: figures skipped (summary.txt and tiles.csv are written).")
+        return
     step = max(1, int(round(1.0 / args.grid)))
     ext = (tr.c, tr.c + shape[1] * args.grid, tr.f - shape[0] * args.grid, tr.f)
     fig, ax = plt.subplots(figsize=(9, 9))
