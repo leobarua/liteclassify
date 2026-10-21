@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDou
                                QFileDialog, QFormLayout, QGraphicsItem, QGraphicsScene, QGraphicsView,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton, QRadioButton,
-                               QSizePolicy,
+                               QLayout,
                                QVBoxLayout, QWidget)
 
 import app_info as A
@@ -333,15 +333,15 @@ class OdmWindow(QDialog):
         self.setWindowTitle("Orthomosaic from Drone Photos (WebODM)")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         self.setModal(False)
-        self.resize(560, 640)
         self.thread = self.worker = None
         self.summary = None
         self.started_at = None
         s = _settings()
 
         outer = QHBoxLayout(self)
+        outer.setSizeConstraint(QLayout.SetFixedSize)   # grows and shrinks with the map panel
         left = QWidget()
-        left.setMinimumWidth(520)
+        left.setFixedWidth(540)
         lay = QVBoxLayout(left)
         lay.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(left)
@@ -371,6 +371,11 @@ class OdmWindow(QDialog):
         self.remember_check.setChecked(s.value("webodm/remember", "false") == "true")
         self.remember_check.setEnabled(os.name == "nt")
         form.addRow("", self.remember_check)
+        self.clear_btn = QPushButton("Clear WebODM Cache")
+        self.clear_btn.setToolTip("Delete every task Lite Classify left in WebODM (its \"Lite Classify\" "
+                                  "project), with their photos and results, to free disk space.")
+        self.clear_btn.clicked.connect(self.clear_cache)
+        form.addRow("", self.clear_btn)
         has_login = bool(self.user_edit.text() and self.pass_edit.text())
         lay.addWidget(CollapsibleSection("Connection", conn, start_collapsed=has_login))
 
@@ -406,6 +411,7 @@ class OdmWindow(QDialog):
         tools.addWidget(all_btn)
         al.addLayout(tools)
         self.map_view = PhotoMapView()
+        self.map_view.setMinimumSize(600, 520)
         self.map_view.aoi_changed.connect(self._on_aoi)
         all_btn.clicked.connect(self.map_view.clear_aoi)
         al.addWidget(self.map_view)
@@ -418,13 +424,15 @@ class OdmWindow(QDialog):
         al.addWidget(tip)
         area.hide()
         outer.addWidget(area, 1)
-        self.area_btn = QPushButton("\u25b8")
+        area_row = QHBoxLayout()
+        area_row.addWidget(QLabel("Process only part of the flight (optional)"))
+        area_row.addStretch(1)
+        self.area_btn = QPushButton("Choose Area \u25b8")
         self.area_btn.setCheckable(True)
-        self.area_btn.setFixedWidth(18)
-        self.area_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
-        self.area_btn.setToolTip("Process only part of the flight: choose an area on a map")
+        self.area_btn.setToolTip("Open a map of the photos beside this form and draw the area to process")
         self.area_btn.toggled.connect(self._toggle_area)
-        outer.insertWidget(1, self.area_btn)
+        area_row.addWidget(self.area_btn)
+        f2.addRow(area_row)
         self.selection_label = QLabel("")
         self.selection_label.setWordWrap(True)
         f2.addRow("", self.selection_label)
@@ -569,12 +577,8 @@ class OdmWindow(QDialog):
             return None
 
     def _toggle_area(self, on):
-        self.area_btn.setText("\u25c2" if on else "\u25b8")
-        if on:
-            self._form_width = self.width()
-        self.area_panel.setVisible(on)
-        self.layout().activate()
-        self.resize(self._form_width + 560 if on else self._form_width, self.height())
+        self.area_btn.setText("Hide Map \u25c2" if on else "Choose Area \u25b8")
+        self.area_panel.setVisible(on)        # the window resizes itself (fixed-size layout)
 
     def _on_aoi(self, pts):
         self.aoi = pts
@@ -589,9 +593,35 @@ class OdmWindow(QDialog):
         n = sum(self.selected)
         size = sum(os.path.getsize(p["path"]) for p, m in zip(self.positions, self.selected) if m)
         what = ("inside the drawn area" if self.aoi else
-                "the whole flight; to process only part of it, open the map with \u25b8 on the right")
+                "the whole flight")
         self.selection_label.setText(f"{n} of {len(self.positions)} photos selected ({size / 1e9:.1f} GB), "
                                      f"{what}.")
+
+    def clear_cache(self):
+        """ Removes every task in WebODM's "Lite Classify" project except the job in progress. """
+        if QMessageBox.question(self, "Clear WebODM Cache",
+                                "Delete all tasks Lite Classify left in WebODM, with their photos and "
+                                "results? A job in progress is kept. Your photo folders and saved results "
+                                "are not touched.") != QMessageBox.Yes:
+            return
+        keep = (saved_job() or {}).get("task")          # a job in progress stays
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            c = self._client()
+            project = c.ensure_project()
+            gone = [t for t in c.tasks(project) if t.get("id") != keep]
+            for t in gone:
+                if t.get("status") in (odm.QUEUED, odm.RUNNING):
+                    c.cancel(project, t["id"])
+                c.remove(project, t["id"])
+        except odm.WebODMError as e:
+            QApplication.restoreOverrideCursor()
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        QApplication.restoreOverrideCursor()
+        QMessageBox.information(self, "Clear WebODM Cache",
+                                f"Removed {len(gone)} task(s) from WebODM." if gone else
+                                "WebODM has no Lite Classify tasks left; nothing to remove.")
 
     def _client(self):
         url, user, pw = self.url_edit.text().strip(), self.user_edit.text().strip(), self.pass_edit.text()

@@ -410,6 +410,11 @@ class WebODMClient:
     def commit(self, project, task):
         return self._post_json(self._task_path(project, task, "commit"))
 
+    def tasks(self, project):
+        """ All tasks in a project (WebODM returns a plain list here). """
+        res = self._get(f"/api/projects/{project}/tasks/")
+        return res.get("results", []) if isinstance(res, dict) else (res or [])
+
     def cancel(self, project, task):
         return self._post_json(self._task_path(project, task, "cancel"))
 

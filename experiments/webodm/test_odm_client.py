@@ -99,6 +99,8 @@ class Fake(BaseHTTPRequestHandler):
             return self._json(200, [{"id": 1, "online": True}])
         if p.startswith("/api/projects/?"):
             return self._json(200, {"count": 1, "next": None, "results": [{"id": 3, "name": "Other"}]})
+        if p == "/api/projects/7/tasks/":
+            return self._json(200, list(STATE["tasks"].values()))
         t = STATE["tasks"].get("abc")
         if p == "/api/projects/7/tasks/abc/":
             t["polls"] += 1
@@ -180,8 +182,9 @@ if __name__ == "__main__":
     assert odm.check_outputs(o, s, 4.32) == []
     assert odm.check_outputs(o, o, 4.32), "colour DSM not caught"
     assert odm.check_outputs(o, s, 4.32, ["Maximum resolution set to 7.39 cm/pixel"]), "cap not caught"
+    assert [x["id"] for x in c.tasks(pid)] == ["abc"]
     c.remove(pid, t["id"])
-    assert "abc" not in STATE["tasks"]
+    assert "abc" not in STATE["tasks"] and c.tasks(pid) == []
     assert STATE["logins"] > 2, "token expiry was never exercised"
     assert odm.options_match(opts, [{"name": "fast-orthophoto", "value": True}])
     print(f"OK ({STATE['logins']} logins incl. re-logins after expiry, {STATE['uploads']} upload batches)")
