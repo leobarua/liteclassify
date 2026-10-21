@@ -28,6 +28,7 @@ from obia_ui import InteractivePhotoViewer, ClassListDelegate, ToggleSwitch, Col
 from obia_ui import GroupCard, ChipPickerDialog, make_chip_qimage, chip_strip_pixmap
 from obia_ui import ChipGallery, ClassNameCombo, suggest_class_color, rgba_premultiplied, ElidedInfoLabel
 import obia_discover as od
+from obia_odm_window import OdmWindow, saved_job
 import shutil
 
 import app_info
@@ -383,6 +384,18 @@ class ObiaApp(QMainWindow):
         self.init_menu_bar()
         self._saved_sig = self._state_signature()
 
+        # WebODM: a job left running by an earlier session shows in the status bar and is
+        # picked up again (the window itself stays closed until asked for).
+        self.odm_window = None
+        self.odm_status_btn = QPushButton()
+        self.odm_status_btn.setFlat(True)
+        self.odm_status_btn.setToolTip("Show the WebODM window")
+        self.odm_status_btn.clicked.connect(self.open_odm_window)
+        self.odm_status_btn.setVisible(False)
+        self.statusBar().addPermanentWidget(self.odm_status_btn)
+        if saved_job():
+            self._ensure_odm_window()
+
         # Every map gets the tallest header (Discover's two rows) and the same hint line,
         # so the map area keeps its size from tab to tab.
         for group in (self._map_headers, self._map_tips):
@@ -423,6 +436,10 @@ class ObiaApp(QMainWindow):
         file_menu.insertSeparator(self.act_save_workspace)
 
         import_menu = mb.addMenu("&Import")
+        self.act_import_webodm = import_menu.addAction("Orthomosaic from Drone &Photos (WebODM)…",
+                                                       self.open_odm_window)
+        self.act_import_webodm.setStatusTip("Process a folder of drone photos with your WebODM installation")
+        import_menu.addSeparator()
         self.act_import_ortho = import_menu.addAction("&Orthomosaic…", self.browse_for_ortho)
         self.act_import_dsm = import_menu.addAction("&DSM…", self.browse_for_dsm)
         import_menu.addSeparator()
@@ -569,9 +586,45 @@ class ObiaApp(QMainWindow):
 
     def closeEvent(self, event):
         if self.confirm_discard_changes("Close Lite Classify"):
+            if self.odm_window is not None and self.odm_window.is_running():
+                self.odm_window.detach()   # WebODM keeps going; picked up on the next start
             event.accept()
         else:
             event.ignore()
+
+    # --- WebODM (Import > Orthomosaic from Drone Photos) ---
+    def _ensure_odm_window(self):
+        if self.odm_window is None:
+            self.odm_window = OdmWindow(self)
+            self.odm_window.status_text.connect(self._on_odm_status)
+            self.odm_window.load_requested.connect(self.load_webodm_result)
+        return self.odm_window
+
+    def open_odm_window(self):
+        w = self._ensure_odm_window()
+        w.show()
+        w.raise_()
+        w.activateWindow()
+
+    def _on_odm_status(self, text):
+        self.odm_status_btn.setText(text)
+        self.odm_status_btn.setVisible(bool(text))
+
+    def load_webodm_result(self, ortho, dsm):
+        """ Loads a finished WebODM orthomosaic and DSM into Tab 1, replacing the current
+        workspace after the usual unsaved-changes prompt. """
+        if self.engine.ortho_data is not None:
+            if not self.confirm_discard_changes("Load WebODM Result"):
+                return
+            self._clear_session()
+        self.tabs.setCurrentIndex(0)
+        self.path_edit.setText(ortho)
+        self.load_ortho()
+        if self.engine.ortho_data is not None and os.path.exists(dsm):
+            self.dsm_path_edit.setText(dsm)
+            self.load_dsm()
+        self.raise_()
+        self.activateWindow()
 
     # --- TAB 1: Load, View & Segment (merged Load&View + Segmentation) ---
     def init_load_view_tab(self):
@@ -606,6 +659,10 @@ class ObiaApp(QMainWindow):
         path_layout.addWidget(self.path_edit)
         path_layout.addWidget(browse_btn)
         input_layout.addLayout(path_layout)
+        webodm_link = QLabel('<a href="#">No orthomosaic yet? Process drone photos…</a>')
+        webodm_link.setToolTip("Import > Orthomosaic from Drone Photos (WebODM)")
+        webodm_link.linkActivated.connect(lambda _: self.open_odm_window())
+        input_layout.addWidget(webodm_link)
 
         input_layout.addWidget(QLabel("Elevation Model (Optional DSM):"))
         dsm_path_lay = QHBoxLayout()
