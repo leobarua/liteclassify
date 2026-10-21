@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDou
                                QFileDialog, QFormLayout, QGraphicsItem, QGraphicsScene, QGraphicsView,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton, QRadioButton,
+                               QSizePolicy,
                                QVBoxLayout, QWidget)
 
 import app_info as A
@@ -171,6 +172,10 @@ class PhotoMapView(QGraphicsView):
         self.setBackgroundBrush(QColor("#f3f4f1"))
         self.setDragMode(QGraphicsView.NoDrag)
         self.viewport().setMouseTracking(True)      # polygon edge follows the cursor
+        # No scroll bars: their appearing on zoom-in resized the view, which refitted it.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._pan = None
         self.mode = "rect"
         self._dots, self._aoi_item, self._draft, self._corners = [], None, [], []
         self._press = None
@@ -256,6 +261,9 @@ class PhotoMapView(QGraphicsView):
         if event.button() == Qt.RightButton:
             self.clear_aoi()
             return
+        if event.button() == Qt.MiddleButton:
+            self._pan = event.position()
+            return
         if event.button() != Qt.LeftButton or not self._dots:
             return super().mousePressEvent(event)
         pt = self._map_pt(event)
@@ -266,6 +274,12 @@ class PhotoMapView(QGraphicsView):
             self._show_aoi(self._draft, closed=False)
 
     def mouseMoveEvent(self, event):
+        if self._pan is not None:                 # middle-drag pans
+            d = event.position() - self._pan
+            self._pan = event.position()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - int(d.x()))
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - int(d.y()))
+            return
         if self.mode == "rect" and self._press is not None:
             (x0, y0), (x1, y1) = self._press, self._map_pt(event)
             self._show_aoi([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
@@ -274,6 +288,9 @@ class PhotoMapView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton:
+            self._pan = None
+            return
         if self.mode == "rect" and self._press is not None and event.button() == Qt.LeftButton:
             (x0, y0), (x1, y1) = self._press, self._map_pt(event)
             self._press = None
@@ -302,7 +319,7 @@ class PhotoMapView(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        if self._dots:
+        if self._dots and (self._fit_scale is None or self.transform().m11() <= self._fit_scale * 1.001):
             self._fit()
 
 
@@ -394,16 +411,20 @@ class OdmWindow(QDialog):
         al.addWidget(self.map_view)
         tip = QLabel("Drag a rectangle, or click polygon corners and double-click to finish. Photos taken "
                      "inside the area are processed and the results are cropped to it; its edges see fewer "
-                     "photos, so draw a little beyond what you need. Scroll to zoom; right-click clears.")
+                     "photos, so draw a little beyond what you need. Scroll to zoom, middle-drag to pan; "
+                     "right-click clears.")
         tip.setWordWrap(True)
         tip.setStyleSheet("color: #76817b; font-size: 11px;")
         al.addWidget(tip)
         area.hide()
         outer.addWidget(area, 1)
-        self.area_btn = QPushButton("Process only part of the flight (optional) \u25b8")
+        self.area_btn = QPushButton("\u25b8")
         self.area_btn.setCheckable(True)
+        self.area_btn.setFixedWidth(18)
+        self.area_btn.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self.area_btn.setToolTip("Process only part of the flight: choose an area on a map")
         self.area_btn.toggled.connect(self._toggle_area)
-        f2.addRow(self.area_btn)
+        outer.insertWidget(1, self.area_btn)
         self.selection_label = QLabel("")
         self.selection_label.setWordWrap(True)
         f2.addRow("", self.selection_label)
@@ -428,13 +449,6 @@ class OdmWindow(QDialog):
         out_row.addWidget(self.out_edit)
         out_row.addWidget(ob)
         f2.addRow("Save results to:", out_row)
-        self.settings_label = locked = QLabel("")
-        locked.setWordWrap(True)
-        locked.setStyleSheet("color: #76817b; font-size: 11px;")
-        f2.addRow("", locked)
-        self.quality_combo.currentTextChanged.connect(self._show_settings)
-        self.res_spin.valueChanged.connect(self._show_settings)
-        self._show_settings()
         lay.addWidget(box)
 
         # Run
@@ -459,7 +473,7 @@ class OdmWindow(QDialog):
         self.log_view.setMaximumBlockCount(500)
         self.log_view.setFont(QFont("Consolas", 8))
         self.log_view.setMinimumHeight(160)
-        self.log_section = CollapsibleSection("WebODM log", self.log_view, start_collapsed=True)
+        self.log_section = CollapsibleSection("WebODM log", self.log_view, start_collapsed=False)
         lay.addWidget(self.log_section, 1)
 
         self.clock = QTimer(self)
@@ -554,15 +568,8 @@ class OdmWindow(QDialog):
         except Exception:
             return None
 
-    def _show_settings(self, *_):
-        """ What will be sent to WebODM (the area, if any, is added at Start). """
-        opts = odm.build_options(self.quality_combo.currentText(), self.res_spin.value())
-        self.settings_label.setText("Settings: " + ", ".join(
-            f"{o['name']} {str(o['value']).lower() if isinstance(o['value'], bool) else o['value']}"
-            for o in opts))
-
     def _toggle_area(self, on):
-        self.area_btn.setText("Process only part of the flight (optional) " + ("\u25c2" if on else "\u25b8"))
+        self.area_btn.setText("\u25c2" if on else "\u25b8")
         if on:
             self._form_width = self.width()
         self.area_panel.setVisible(on)
@@ -581,7 +588,8 @@ class OdmWindow(QDialog):
         self.map_view.set_selected(self.selected)
         n = sum(self.selected)
         size = sum(os.path.getsize(p["path"]) for p, m in zip(self.positions, self.selected) if m)
-        what = "inside the drawn area" if self.aoi else "the whole flight"
+        what = ("inside the drawn area" if self.aoi else
+                "the whole flight; to process only part of it, open the map with \u25b8 on the right")
         self.selection_label.setText(f"{n} of {len(self.positions)} photos selected ({size / 1e9:.1f} GB), "
                                      f"{what}.")
 
@@ -631,6 +639,9 @@ class OdmWindow(QDialog):
                "options": odm.build_options(self.quality_combo.currentText(), gsd, boundary),
                "photos": photos, "started": time.time()}
         self.log_view.clear()
+        self.log_view.appendPlainText(f"{len(photos)} photos, settings sent to WebODM:\n" + " ".join(
+            f"--{o['name']} {o['value'] if o['name'] != 'boundary' else '<drawn area>'}"
+            for o in job["options"]))
         self._run(client, job)
 
     def resume(self):
