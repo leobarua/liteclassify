@@ -170,6 +170,7 @@ class PhotoMapView(QGraphicsView):
         self.setMinimumHeight(260)
         self.setBackgroundBrush(QColor("#f3f4f1"))
         self.setDragMode(QGraphicsView.NoDrag)
+        self.viewport().setMouseTracking(True)      # polygon edge follows the cursor
         self.mode = "rect"
         self._dots, self._aoi_item, self._draft, self._corners = [], None, [], []
         self._press = None
@@ -392,8 +393,8 @@ class OdmWindow(QDialog):
         all_btn.clicked.connect(self.map_view.clear_aoi)
         al.addWidget(self.map_view)
         tip = QLabel("Drag a rectangle, or click polygon corners and double-click to finish. Photos taken "
-                     "inside the area are processed and the results are cropped to it. Scroll to zoom; "
-                     "right-click clears.")
+                     "inside the area are processed and the results are cropped to it; its edges see fewer "
+                     "photos, so draw a little beyond what you need. Scroll to zoom; right-click clears.")
         tip.setWordWrap(True)
         tip.setStyleSheet("color: #76817b; font-size: 11px;")
         al.addWidget(tip)
@@ -427,11 +428,13 @@ class OdmWindow(QDialog):
         out_row.addWidget(self.out_edit)
         out_row.addWidget(ob)
         f2.addRow("Save results to:", out_row)
-        locked = QLabel("Settings: " + ", ".join(
-            f"{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in odm.BASE_OPTIONS.items()))
+        self.settings_label = locked = QLabel("")
         locked.setWordWrap(True)
         locked.setStyleSheet("color: #76817b; font-size: 11px;")
         f2.addRow("", locked)
+        self.quality_combo.currentTextChanged.connect(self._show_settings)
+        self.res_spin.valueChanged.connect(self._show_settings)
+        self._show_settings()
         lay.addWidget(box)
 
         # Run
@@ -550,6 +553,13 @@ class OdmWindow(QDialog):
             return img, (tr.c, tr.f + tr.e * h, tr.c + tr.a * w, tr.f)
         except Exception:
             return None
+
+    def _show_settings(self, *_):
+        """ What will be sent to WebODM (the area, if any, is added at Start). """
+        opts = odm.build_options(self.quality_combo.currentText(), self.res_spin.value())
+        self.settings_label.setText("Settings: " + ", ".join(
+            f"{o['name']} {str(o['value']).lower() if isinstance(o['value'], bool) else o['value']}"
+            for o in opts))
 
     def _toggle_area(self, on):
         self.area_btn.setText("Process only part of the flight (optional) " + ("\u25c2" if on else "\u25b8"))
