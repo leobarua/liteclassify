@@ -667,17 +667,30 @@ class OdmWindow(QDialog):
         self.start_btn.clicked.connect(self.start)
         self.resume()
 
+    def _on_job_saved(self, job):
+        _save_job(job)
+
+    def _on_upload_progress(self, done, total):
+        self._show("Uploading photos", done / max(total, 1), f"{done}/{total}")
+
+    def _on_status(self, stage, frac, code):
+        self._show(stage, frac)
+
+    def _on_log_lines(self, lines):
+        self.log_view.appendPlainText("\n".join(lines))
+
     def _run(self, client, job):
         self.started_at = job.get("started") or time.time()
         self.thread = QThread()
         self.worker = OdmJobWorker(client, job)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
-        self.worker.job_saved.connect(_save_job)
-        self.worker.upload_progress.connect(lambda d, n: self._show("Uploading photos", d / max(n, 1),
-                                                                    f"{d}/{n}"))
-        self.worker.status.connect(lambda st, p, code: self._show(st, p))
-        self.worker.log_lines.connect(lambda lines: self.log_view.appendPlainText("\n".join(lines)))
+        # Bound methods, not lambdas: Qt queues those onto the UI thread. A lambda runs in
+        # the worker's thread and touching widgets from there crashes the app.
+        self.worker.job_saved.connect(self._on_job_saved)
+        self.worker.upload_progress.connect(self._on_upload_progress)
+        self.worker.status.connect(self._on_status)
+        self.worker.log_lines.connect(self._on_log_lines)
         self.worker.finished.connect(self._on_finished)
         self.worker.failed.connect(self._on_failed)
         self.worker.cancelled.connect(self._on_cancelled)
