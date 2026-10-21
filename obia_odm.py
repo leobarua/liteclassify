@@ -73,14 +73,18 @@ class AuthError(WebODMError):
     pass
 
 
-def build_options(quality, gsd_cm):
-    """ The option list for a task: the locked base, the quality preset, and the
-    resolutions from the ground sampling distance (ortho at GSD, DSM at 4x). """
+def build_options(quality, gsd_cm, boundary=None):
+    """ The option list for a task: the locked base, the quality preset, the resolutions
+    from the ground sampling distance (ortho at GSD, DSM at 4x), and an optional area of
+    interest (GeoJSON string) that the outputs are cropped to. """
     opts = dict(BASE_OPTIONS)
     opts.update(QUALITY_PRESETS[quality])
     if gsd_cm:
         opts["orthophoto-resolution"] = round(float(gsd_cm), 2)
         opts["dem-resolution"] = round(4 * float(gsd_cm), 1)
+    if boundary:
+        opts["boundary"] = boundary
+        opts["auto-boundary"] = False
     return [{"name": k, "value": v} for k, v in opts.items()]
 
 
@@ -139,6 +143,73 @@ def photo_summary(folder, sample=25):
         sensor_w = diag_mm * w / math.hypot(w, h)
         out["gsd_cm"] = 100 * out["altitude_m"] * sensor_w / (focal * w)
     return out
+
+
+# --- Photo positions and subset selection ---
+
+def _dms(v):
+    d, m, s = (float(x) for x in v)
+    return d + m / 60 + s / 3600
+
+
+def photo_positions(paths):
+    """ [{path, lon, lat, time}] for the photos with an EXIF GPS position, in capture order
+    (DateTimeOriginal, then file name). """
+    from PIL import Image
+    out = []
+    for p in paths:
+        try:
+            with Image.open(p) as im:
+                ex = im.getexif()
+                gps = ex.get_ifd(0x8825)
+                t = ex.get_ifd(0x8769).get(0x9003, "")
+            if not (gps.get(2) and gps.get(4)):
+                continue
+            lat, lon = _dms(gps[2]), _dms(gps[4])
+            if gps.get(1, "N") == "S":
+                lat = -lat
+            if gps.get(3, "E") == "W":
+                lon = -lon
+            out.append({"path": p, "lon": lon, "lat": lat, "time": str(t)})
+        except Exception:
+            continue
+    out.sort(key=lambda r: (r["time"], os.path.basename(r["path"])))
+    return out
+
+
+def utm_epsg(lon, lat):
+    return (32600 if lat >= 0 else 32700) + int((lon + 180) // 6) % 60 + 1
+
+
+def project(lons, lats, epsg, inverse=False):
+    """ WGS84 lon/lat <-> the given projected CRS (pyproj). """
+    from pyproj import Transformer
+    t = Transformer.from_crs(epsg if inverse else 4326, 4326 if inverse else epsg, always_xy=True)
+    return t.transform(lons, lats)
+
+
+def select_photos(xy, aoi_xy, footprint_m):
+    """ Mask of photos to process for an area of interest (polygon vertices, same CRS as
+    xy): those within half a photo footprint of it, so the area keeps full overlap out to
+    its edges. footprint_m: (width, height) of one photo on the ground. """
+    from shapely import contains_xy
+    from shapely.geometry import Polygon
+    if len(aoi_xy) < 3:
+        return [True] * len(xy)
+    zone = Polygon(aoi_xy).buffer(max(footprint_m) / 2)
+    xs = [p[0] for p in xy]
+    ys = [p[1] for p in xy]
+    return [bool(v) for v in contains_xy(zone, xs, ys)]
+
+
+def boundary_geojson(aoi_xy, epsg):
+    """ The area of interest as a WGS84 GeoJSON string for ODM's boundary option. """
+    lons, lats = project([p[0] for p in aoi_xy], [p[1] for p in aoi_xy], epsg, inverse=True)
+    ring = [[round(x, 8), round(y, 8)] for x, y in zip(lons, lats)]
+    ring.append(ring[0])
+    return json.dumps({"type": "FeatureCollection", "features": [{
+        "type": "Feature", "properties": {},
+        "geometry": {"type": "Polygon", "coordinates": [ring]}}]})
 
 
 # --- Remember-me password (Windows DPAPI, current user only) ---
@@ -374,12 +445,19 @@ class WebODMClient:
 
 def options_match(sent, task_options):
     """ Options WebODM stored differ from what was sent -> list of 'name: sent -> stored'. """
+    def norm(v):
+        if isinstance(v, str) and v[:1] in "{[":
+            try:
+                return json.loads(v)               # GeoJSON may come back parsed
+            except ValueError:
+                pass
+        return str(v).lower() if not isinstance(v, (dict, list)) else v
     stored = {o["name"]: o["value"] for o in (task_options or [])}
     bad = []
     for o in sent:
         v = stored.get(o["name"], "<missing>")
-        if str(v).lower() != str(o["value"]).lower():
-            bad.append(f"{o['name']}: {o['value']} -> {v}")
+        if norm(v) != norm(o["value"]):
+            bad.append(f"{o['name']}: {str(o['value'])[:60]} -> {str(v)[:60]}")
     return bad
 
 

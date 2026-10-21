@@ -10,11 +10,12 @@ import json
 import os
 import time
 
-from PySide6.QtCore import QObject, QSettings, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QFont
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-                               QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
+from PySide6.QtCore import QObject, QPointF, QRectF, QSettings, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
+                               QFileDialog, QFormLayout, QGraphicsScene, QGraphicsView,
+                               QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+                               QPlainTextEdit, QProgressBar, QPushButton, QRadioButton,
                                QVBoxLayout, QWidget)
 
 import app_info as A
@@ -156,6 +157,133 @@ class OdmJobWorker(QObject):
         self.cancelled.emit()
 
 
+class PhotoMapView(QGraphicsView):
+    """ Photo positions (dots, joined in capture order) on a plain background, or over the
+    loaded orthomosaic, with rectangle or polygon drawing of an area of interest.
+    Map coordinates are metres east/north; the scene flips y. """
+    aoi_changed = Signal(list)            # [(x, y), ...] map coordinates; [] = none
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setScene(QGraphicsScene(self))
+        self.setRenderHint(QPainter.Antialiasing)
+        self.setMinimumHeight(260)
+        self.setBackgroundBrush(QColor("#f3f4f1"))
+        self.setDragMode(QGraphicsView.NoDrag)
+        self.mode = "rect"
+        self._dots, self._aoi_item, self._draft = [], None, []
+        self._press = None
+        self._r = 1.0
+
+    def set_photos(self, xy, underlay=None):
+        """ xy: [(x, y)]; underlay: (QImage, (left, bottom, right, top)) or None. """
+        sc = self.scene()
+        sc.clear()
+        self._dots, self._aoi_item, self._draft = [], None, []
+        if not xy:
+            return
+        xs, ys = [p[0] for p in xy], [p[1] for p in xy]
+        span = max(max(xs) - min(xs), max(ys) - min(ys), 10.0)
+        self._r = span / 150
+        if underlay is not None:
+            img, (l, b, r, t) = underlay
+            item = sc.addPixmap(QPixmap.fromImage(img))
+            item.setOffset(0, 0)
+            item.setScale((r - l) / img.width())
+            item.setPos(l, -t)
+            item.setOpacity(0.85)
+        path = QPainterPath(QPointF(xs[0], -ys[0]))
+        for x, y in xy[1:]:
+            path.lineTo(x, -y)
+        sc.addPath(path, QPen(QColor("#9aa39d"), 0))
+        for x, y in xy:
+            d = sc.addEllipse(x - self._r, -y - self._r, 2 * self._r, 2 * self._r, QPen(Qt.NoPen),
+                              QBrush(QColor("#f65244")))
+            self._dots.append(d)
+        pad = span * 0.08
+        self.setSceneRect(QRectF(min(xs) - pad, -max(ys) - pad, max(xs) - min(xs) + 2 * pad,
+                                 max(ys) - min(ys) + 2 * pad))
+        QTimer.singleShot(0, lambda: self.fitInView(self.sceneRect(), Qt.KeepAspectRatio))
+
+    def set_selected(self, mask):
+        on, off = QBrush(QColor("#f65244")), QBrush(QColor("#b9c0bb"))
+        for d, m in zip(self._dots, mask):
+            d.setBrush(on if m else off)
+
+    def clear_aoi(self):
+        self._draft = []
+        self._show_aoi([])
+        self.aoi_changed.emit([])
+
+    def _show_aoi(self, pts, closed=True):
+        if self._aoi_item is not None:
+            self.scene().removeItem(self._aoi_item)
+            self._aoi_item = None
+        if len(pts) >= 2:
+            poly = QPolygonF([QPointF(x, -y) for x, y in pts])
+            pen = QPen(QColor("#1f6fb2"), 0)
+            pen.setWidthF(2)
+            pen.setCosmetic(True)
+            if closed:
+                self._aoi_item = self.scene().addPolygon(poly, pen, QBrush(QColor(31, 111, 178, 40)))
+            else:
+                path = QPainterPath()
+                path.addPolygon(poly)
+                self._aoi_item = self.scene().addPath(path, pen)
+
+    def _map_pt(self, event):
+        p = self.mapToScene(event.position().toPoint())
+        return (p.x(), -p.y())
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            self.clear_aoi()
+            return
+        if event.button() != Qt.LeftButton or not self._dots:
+            return super().mousePressEvent(event)
+        pt = self._map_pt(event)
+        if self.mode == "rect":
+            self._press = pt
+        else:
+            self._draft.append(pt)
+            self._show_aoi(self._draft, closed=False)
+
+    def mouseMoveEvent(self, event):
+        if self.mode == "rect" and self._press is not None:
+            (x0, y0), (x1, y1) = self._press, self._map_pt(event)
+            self._show_aoi([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
+        elif self.mode == "poly" and self._draft:
+            self._show_aoi(self._draft + [self._map_pt(event)], closed=False)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self.mode == "rect" and self._press is not None and event.button() == Qt.LeftButton:
+            (x0, y0), (x1, y1) = self._press, self._map_pt(event)
+            self._press = None
+            if abs(x1 - x0) > self._r and abs(y1 - y0) > self._r:
+                pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+                self._show_aoi(pts)
+                self.aoi_changed.emit(pts)
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if self.mode == "poly" and len(self._draft) >= 3:
+            pts, self._draft = self._draft, []
+            self._show_aoi(pts)
+            self.aoi_changed.emit(pts)
+
+    def wheelEvent(self, event):
+        f = 1.25 if event.angleDelta().y() > 0 else 0.8
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.scale(f, f)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._dots:
+            self.fitInView(self.sceneRect(), Qt.KeepAspectRatio)
+
+
 class OdmWindow(QDialog):
     """ The floating WebODM window. """
     status_text = Signal(str)            # for the main window's status bar ("" = no job)
@@ -217,6 +345,38 @@ class OdmWindow(QDialog):
         self.summary_label = QLabel("")
         self.summary_label.setWordWrap(True)
         f2.addRow("", self.summary_label)
+
+        area = QWidget()
+        al = QVBoxLayout(area)
+        al.setContentsMargins(0, 0, 0, 0)
+        tools = QHBoxLayout()
+        self.rect_radio = QRadioButton("Rectangle")
+        self.poly_radio = QRadioButton("Polygon")
+        self.rect_radio.setChecked(True)
+        self.rect_radio.toggled.connect(lambda on: setattr(self.map_view, "mode", "rect" if on else "poly"))
+        all_btn = QPushButton("Use All Photos")
+        tools.addWidget(QLabel("Draw:"))
+        tools.addWidget(self.rect_radio)
+        tools.addWidget(self.poly_radio)
+        tools.addStretch(1)
+        tools.addWidget(all_btn)
+        al.addLayout(tools)
+        self.map_view = PhotoMapView()
+        self.map_view.aoi_changed.connect(self._on_aoi)
+        all_btn.clicked.connect(self.map_view.clear_aoi)
+        al.addWidget(self.map_view)
+        tip = QLabel("Drag a rectangle, or click polygon corners and double-click to finish. Photos within "
+                     "half a photo footprint of the area are kept so its edges get full overlap; the "
+                     "results are cropped to the area. Right-click clears.")
+        tip.setWordWrap(True)
+        tip.setStyleSheet("color: #76817b; font-size: 11px;")
+        al.addWidget(tip)
+        self.selection_label = QLabel("")
+        al.addWidget(self.selection_label)
+        self.area_section = CollapsibleSection("Process only part of the flight (optional)", area,
+                                               start_collapsed=True)
+        f2.addRow(self.area_section)
+        self.positions, self.epsg, self.aoi, self.selected = [], None, [], []
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(list(odm.QUALITY_PRESETS))
         self.quality_combo.setToolTip("Standard aligns the photos at half resolution; Maximum at full "
@@ -230,6 +390,7 @@ class OdmWindow(QDialog):
         self.res_spin.setToolTip("Orthomosaic resolution; the DSM is made at 4x this. Estimated from "
                                  "the photos (flight height and camera).")
         f2.addRow("Resolution:", self.res_spin)
+        self.res_spin.valueChanged.connect(lambda _: self._update_selection())
         out_row = QHBoxLayout()
         self.out_edit = QLineEdit()
         ob = QPushButton("Browse")
@@ -320,8 +481,66 @@ class OdmWindow(QDialog):
         if free is not None and free < 3 * s["bytes"]:
             parts.append(f"warning: only {free / 1e9:.1f} GB free on this drive")
         self.summary_label.setText(", ".join(parts) + ".")
+        self._load_positions()
         if not self.out_edit.text():
             self.out_edit.setText(folder.rstrip("/\\") + "_webodm")
+
+    def _load_positions(self):
+        """ Photo GPS positions for the area map (projected to UTM, metres). """
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            pos = odm.photo_positions(odm.list_images(self.photos_edit.text().strip()))
+        finally:
+            QApplication.restoreOverrideCursor()
+        self.positions, self.aoi = pos, []
+        if not pos:
+            self.epsg, self.selected = None, []
+            self.map_view.set_photos([])
+            self.selection_label.setText("These photos have no GPS positions; all of them will be used.")
+            return
+        self.epsg = odm.utm_epsg(pos[0]["lon"], pos[0]["lat"])
+        xs, ys = odm.project([p["lon"] for p in pos], [p["lat"] for p in pos], self.epsg)
+        self.xy = list(zip(xs, ys))
+        self.map_view.set_photos(self.xy, self._underlay())
+        self._update_selection()
+
+    def _underlay(self):
+        """ The orthomosaic loaded in the main window, if it is in the same UTM zone. """
+        e = getattr(self.parent(), "engine", None)
+        if e is None or e.ortho_data is None or not e.ortho_meta or self.epsg is None:
+            return None
+        try:
+            if e.ortho_meta["crs"].to_epsg() != self.epsg:
+                return None
+            import numpy as np
+            b, h, w = e.ortho_data.shape
+            step = max(1, max(h, w) // 1500)
+            rgb = np.ascontiguousarray(np.transpose(e.ortho_data[:3, ::step, ::step], (1, 2, 0)).astype(np.uint8))
+            img = QImage(rgb.data, rgb.shape[1], rgb.shape[0], 3 * rgb.shape[1], QImage.Format_RGB888).copy()
+            tr = e.ortho_meta["transform"]
+            return img, (tr.c, tr.f + tr.e * h, tr.c + tr.a * w, tr.f)
+        except Exception:
+            return None
+
+    def _footprint(self):
+        s, gsd = self.summary or {}, self.res_spin.value() / 100
+        return (gsd * (s.get("width") or 4000), gsd * (s.get("height") or 3000))
+
+    def _on_aoi(self, pts):
+        self.aoi = pts
+        self._update_selection()
+
+    def _update_selection(self):
+        if not self.positions:
+            return
+        self.selected = (odm.select_photos(self.xy, self.aoi, self._footprint()) if self.aoi
+                         else [True] * len(self.positions))
+        self.map_view.set_selected(self.selected)
+        n = sum(self.selected)
+        size = sum(os.path.getsize(p["path"]) for p, m in zip(self.positions, self.selected) if m)
+        what = "inside the drawn area (plus a footprint around it)" if self.aoi else "the whole flight"
+        self.selection_label.setText(f"{n} of {len(self.positions)} photos selected ({size / 1e9:.1f} GB), "
+                                     f"{what}.")
 
     def _client(self):
         url, user, pw = self.url_edit.text().strip(), self.user_edit.text().strip(), self.pass_edit.text()
@@ -345,6 +564,10 @@ class OdmWindow(QDialog):
             return
         folder = self.photos_edit.text().strip()
         photos = odm.list_images(folder) if os.path.isdir(folder) else []
+        boundary = None
+        if self.aoi and self.positions:
+            photos = [p["path"] for p, m in zip(self.positions, self.selected) if m]
+            boundary = odm.boundary_geojson(self.aoi, self.epsg)
         if len(photos) < 2:
             QMessageBox.warning(self, "WebODM", "Choose a folder with at least two drone photos.")
             return
@@ -362,7 +585,7 @@ class OdmWindow(QDialog):
         name = os.path.basename(folder.rstrip("/\\"))
         job = {"project": None, "task": None, "out_dir": out_dir, "gsd_cm": gsd,
                "name": f"{name} (Lite Classify)",
-               "options": odm.build_options(self.quality_combo.currentText(), gsd),
+               "options": odm.build_options(self.quality_combo.currentText(), gsd, boundary),
                "photos": photos, "started": time.time()}
         self.log_view.clear()
         self._run(client, job)

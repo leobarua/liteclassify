@@ -267,9 +267,18 @@ def extract_single_segment_features(crop_rgb, crop_mask, seg_id, area, perimeter
     }
 
 
+class Cancelled(Exception):
+    """ Raised at a checkpoint of a long step after the user pressed Cancel. """
+
+
 # --- Engine: raster I/O, segmentation (CPU and GPU SLIC), features, accuracy ---
 class ObiaEngine:
+    # What a segmentation run replaces; a cancelled run puts these back.
+    SEGMENTATION_STATE = ("segmented_image", "segments_gdf", "features_df", "adjacency_graph",
+                          "feature_pixel_size")
+
     def __init__(self):
+        self.cancel_requested = False      # set from the UI thread; checked by check_cancel()
         self.ortho_path = None
         self.original_ortho_data = None
         self.ortho_data = None
@@ -708,7 +717,7 @@ class ObiaEngine:
                 self.segmented_image = self._segment_tiled(n_segments, compactness, sigma, use_gpu, plan)
                 return self.segmented_image, None
             except Exception as e:
-                if not use_gpu:
+                if not use_gpu or isinstance(e, Cancelled):
                     raise
                 print(f" -> Tiled GPU segmentation failed ({e}). Retrying the tiles on the CPU...")
                 try:
@@ -894,6 +903,7 @@ class ObiaEngine:
                  for r0 in range(0, H, core) for c0 in range(0, W, core)]
         for i, (r0, r1, c0, c1) in enumerate(tiles, start=1):
             wr0, wr1, wc0, wc1 = max(0, r0 - M), min(H, r1 + M), max(0, c0 - M), min(W, c1 + M)
+            self.check_cancel()
             m = np.ascontiguousarray(self.valid_mask[wr0:wr1, wc0:wc1])
             n_valid = int(np.count_nonzero(m))
             if n_valid == 0:
@@ -1324,8 +1334,10 @@ class ObiaEngine:
                 dsm[sl] if dsm is not None else None, slope[sl] if slope is not None else None)
             if res is not None:
                 feature_dicts.append(res)
-            if i % 20000 == 0:
-                print(f" -> Processed {i}/{total} segment features...")
+            if i % 2000 == 0:
+                self.check_cancel()
+                if i % 20000 == 0:
+                    print(f" -> Processed {i}/{total} segment features...")
 
         self.features_df = pd.DataFrame(feature_dicts).set_index('raster_val')
         return self.features_df
@@ -1341,6 +1353,18 @@ class ObiaEngine:
     # detail than at the working grid.
 
     feature_pixel_size = None
+
+    def check_cancel(self):
+        if self.cancel_requested:
+            raise Cancelled()
+
+    def snapshot(self, names=SEGMENTATION_STATE):
+        """ References to the current results (cheap: a new run builds new objects). """
+        return {n: getattr(self, n, None) for n in names}
+
+    def restore(self, snap):
+        for n, v in snap.items():
+            setattr(self, n, v)
 
     def feature_grid(self):
         """ (height, width) of the feature grid over the whole source file, or None when
@@ -1435,6 +1459,7 @@ class ObiaEngine:
         next_report = 20000
         with rasterio.open(self.ortho_path) as src:
             for key in sorted(blocks):
+                self.check_cancel()
                 for t in self._file_feature_tasks(src, blocks[key], slices, geom, Hf, Wf):
                     res = extract_single_segment_features(*t)   # one thread: see compute_all_features_parallel
                     if res is not None:

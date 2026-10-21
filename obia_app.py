@@ -23,7 +23,7 @@ from skimage import exposure
 from sklearn.ensemble import RandomForestClassifier
 
 # Import modular components
-from obia_engine import ObiaEngine, cuda_available, working_bytes, free_ram_bytes
+from obia_engine import ObiaEngine, Cancelled, cuda_available, working_bytes, free_ram_bytes
 from obia_ui import InteractivePhotoViewer, ClassListDelegate, ToggleSwitch, CollapsibleSection, render_confusion_matrix_image, render_separability_image
 from obia_ui import GroupCard, ChipPickerDialog, make_chip_qimage, chip_strip_pixmap
 from obia_ui import ChipGallery, ClassNameCombo, suggest_class_color, rgba_premultiplied, ElidedInfoLabel
@@ -148,10 +148,12 @@ class SegmentationWorker(QObject):
     # Emits: (segmented_image, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration)
     finished = Signal(object, object, object, int, float)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, engine, n_segments, compactness, sigma, app_instance, force_device="auto"):
         super().__init__()
         self.engine = engine
+        self.snapshot = engine.snapshot()     # put back if the run is cancelled
         self.n_segments = n_segments
         self.compactness = compactness
         self.sigma = sigma
@@ -171,6 +173,7 @@ class SegmentationWorker(QObject):
                 force_device=self.force_device
             )
             segmented = self.engine.segmented_image
+            self.engine.check_cancel()
             self.engine.build_adjacency_graph()
 
             if segmented is None:
@@ -182,18 +185,24 @@ class SegmentationWorker(QObject):
             base_seg_qimg, boundary_overlay_qimg = build_boundary_and_visual_caches(self.engine)
 
             # [Step 3/4] Compiling spatial geometries (Polygon tracing)
+            self.engine.check_cancel()
             print("[Step 3/4] Vectorizing segments into crisp polygon layers...")
             self.engine.vectorize_segments()
             num_polygons = len(self.engine.segments_gdf)
 
             # [Step 4/4] Multi-core texture feature extraction
+            self.engine.check_cancel()
             print("[Step 4/4] Pre-computing 19D / 23D texture and shape features in parallel...")
             self.engine.compute_all_features_parallel()
+            self.engine.check_cancel()
             self.engine.compute_neighbor_relative_features()
             self.engine.compute_height_features()
 
             duration = time.time() - start_time
             self.finished.emit(segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration)
+        except Cancelled:
+            self.engine.restore(self.snapshot)
+            self.cancelled.emit()
         except Exception:
             import traceback
             self.failed.emit(traceback.format_exc())
@@ -204,18 +213,24 @@ class DeepFeatureWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int)
+    cancelled = Signal()
 
     def __init__(self, engine):
         super().__init__()
         self.engine = engine
+        self.cancel_requested = False
 
     def run(self):
         try:
             e = self.engine
             deep = od.compute_deep_features(e.original_ortho_data, e.segmented_image, e.valid_mask,
                                             e.effective_pixel_size or 0.1,
-                                            progress=lambda d, n: self.progress.emit(d, n))
-            self.finished.emit(deep)
+                                            progress=lambda d, n: self.progress.emit(d, n),
+                                            cancelled=lambda: self.cancel_requested)
+            if deep is None:
+                self.cancelled.emit()
+            else:
+                self.finished.emit(deep)
         except Exception:
             import traceback
             self.failed.emit(traceback.format_exc())
@@ -915,6 +930,12 @@ class ObiaApp(QMainWindow):
         self.run_seg_btn = QPushButton("Run Segmentation")
         self.run_seg_btn.clicked.connect(self.run_segmentation)
         io_layout.addWidget(self.run_seg_btn)
+        self.cancel_seg_btn = QPushButton("Cancel")
+        self.cancel_seg_btn.setToolTip("Stop segmenting and keep the previous result. Takes effect at "
+                                       "the next checkpoint (between tiles, or during feature measurement).")
+        self.cancel_seg_btn.clicked.connect(self.cancel_segmentation)
+        self.cancel_seg_btn.setVisible(False)
+        io_layout.addWidget(self.cancel_seg_btn)
         io_group.setLayout(io_layout)
         controls_layout.addWidget(io_group)
 
@@ -1705,6 +1726,10 @@ class ObiaApp(QMainWindow):
         force_device = "gpu" if self.gpu_radio.isChecked() else "cpu"
         self.run_seg_btn.setEnabled(False)
         self.run_seg_btn.setText("Processing...")
+        self.engine.cancel_requested = False
+        self.cancel_seg_btn.setEnabled(True)
+        self.cancel_seg_btn.setText("Cancel")
+        self.cancel_seg_btn.setVisible(True)
 
         self.seg_thread = QThread()
         self.seg_worker = SegmentationWorker(
@@ -1720,8 +1745,11 @@ class ObiaApp(QMainWindow):
         self.seg_thread.started.connect(self.seg_worker.run)
         self.seg_worker.finished.connect(self.on_segmentation_finished)
         self.seg_worker.failed.connect(self.on_segmentation_failed)
+        self.seg_worker.cancelled.connect(self.on_segmentation_cancelled)
 
         self.seg_worker.finished.connect(self.seg_thread.quit)
+        self.seg_worker.failed.connect(self.seg_thread.quit)
+        self.seg_worker.cancelled.connect(self.seg_thread.quit)
         self.seg_worker.finished.connect(self.seg_worker.deleteLater)
         self.seg_thread.finished.connect(self.seg_thread.deleteLater)
 
@@ -1741,9 +1769,24 @@ class ObiaApp(QMainWindow):
         self.base_seg_qimg, self.boundary_overlay_qimg = build_boundary_and_visual_caches(self.engine)
         self._invalidate_display_caches()
 
-    def on_segmentation_finished(self, segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration):
+    def cancel_segmentation(self):
+        self.engine.cancel_requested = True
+        self.cancel_seg_btn.setEnabled(False)
+        self.cancel_seg_btn.setText("Cancelling…")
+        print("Cancelling segmentation at the next checkpoint...")
+
+    def _seg_controls_idle(self):
         self.run_seg_btn.setEnabled(True)
         self.run_seg_btn.setText("Run Segmentation")
+        self.cancel_seg_btn.setVisible(False)
+        self.engine.cancel_requested = False
+
+    def on_segmentation_cancelled(self):
+        self._seg_controls_idle()
+        print(">>> Segmentation cancelled; the previous result (if any) is unchanged. <<<")
+
+    def on_segmentation_finished(self, segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration):
+        self._seg_controls_idle()
 
         self.base_seg_qimg = base_seg_qimg
         self.boundary_overlay_qimg = boundary_overlay_qimg
@@ -1797,8 +1840,7 @@ class ObiaApp(QMainWindow):
             print(f" -> Freed {freed / 1e9:.1f} GB (DSM grid copies; rebuilt automatically if needed).")
 
     def on_segmentation_failed(self, traceback_str):
-        self.run_seg_btn.setEnabled(True)
-        self.run_seg_btn.setText("Run Segmentation")
+        self._seg_controls_idle()
         print(f"Segmentation Thread Error:\n{traceback_str}")
 
     # --- TAB 2: Discover Classes ---
@@ -1853,6 +1895,11 @@ class ObiaApp(QMainWindow):
             "QPushButton:disabled { background-color: #d3a29c; color: #f2e6e4; }")
         self.disc_find_btn.clicked.connect(self.discover_find_groups)
         fg.addWidget(self.disc_find_btn)
+        self.disc_cancel_btn = QPushButton("Cancel")
+        self.disc_cancel_btn.setToolTip("Stop computing deep features")
+        self.disc_cancel_btn.clicked.connect(self.cancel_deep_features)
+        self.disc_cancel_btn.setVisible(False)
+        fg.addWidget(self.disc_cancel_btn)
         self.disc_status_label = QLabel("Segment an image first (Tab 1).")
         self.disc_status_label.setWordWrap(True)
         self.disc_status_label.setStyleSheet("color: #8fbf9a;")
@@ -2201,8 +2248,13 @@ class ObiaApp(QMainWindow):
         self.deep_worker.progress.connect(self._on_deep_progress)
         self.deep_worker.finished.connect(self._on_deep_finished)
         self.deep_worker.failed.connect(self._on_deep_failed)
+        self.deep_worker.cancelled.connect(self._on_deep_cancelled)
         self.deep_worker.finished.connect(self.deep_thread.quit)
         self.deep_worker.failed.connect(self.deep_thread.quit)
+        self.deep_worker.cancelled.connect(self.deep_thread.quit)
+        self.disc_cancel_btn.setEnabled(True)
+        self.disc_cancel_btn.setText("Cancel")
+        self.disc_cancel_btn.setVisible(True)
         self.deep_worker.finished.connect(self.deep_worker.deleteLater)
         self.deep_thread.finished.connect(self.deep_thread.deleteLater)
         self.deep_thread.start()
@@ -2215,9 +2267,25 @@ class ObiaApp(QMainWindow):
             eta = f" · about {self._fmt_duration(left)} left"
         self.disc_status_label.setText(f"Deep features: {done:,} / {total:,} patches{eta}")
 
-    def _on_deep_finished(self, deep):
+    def cancel_deep_features(self):
+        if getattr(self, "deep_worker", None) is not None:
+            self.deep_worker.cancel_requested = True
+            self.disc_cancel_btn.setEnabled(False)
+            self.disc_cancel_btn.setText("Cancelling…")
+
+    def _deep_controls_idle(self):
         self.disc_find_btn.setEnabled(True)
         self.disc_find_btn.setText("Find Groups")
+        self.disc_cancel_btn.setVisible(False)
+
+    def _on_deep_cancelled(self):
+        self._deep_controls_idle()
+        self.deep_worker = None
+        print("Deep features cancelled.")
+        self.disc_status_label.setText("Cancelled. Press Find Groups to start again.")
+
+    def _on_deep_finished(self, deep):
+        self._deep_controls_idle()
         self.deep = deep
         print(f" -> Deep features done on {deep['device'].upper()} in {deep['seconds']:.0f} s.")
         if self.workspace_dir:
@@ -2230,8 +2298,7 @@ class ObiaApp(QMainWindow):
         self._discover_group_now()
 
     def _on_deep_failed(self, tb):
-        self.disc_find_btn.setEnabled(True)
-        self.disc_find_btn.setText("Find Groups")
+        self._deep_controls_idle()
         print(f"Deep features failed:\n{tb}")
         self.disc_status_label.setText("Deep features failed (see log). Untick Appearance to group on the classifier features only.")
 

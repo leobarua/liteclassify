@@ -51,6 +51,10 @@ inside a closed-source product). See `COMMERCIAL-LICENSING.md`.
 | DINOv2 ViT backbone code (Meta Platforms, Inc.) | `third_party/dinov2/` | Apache License 2.0 (`third_party/dinov2/LICENSE`) |
 | DINOv2 ViT-S/14 pretrained weights | bundled in builds as `models/dinov2_vits14_pretrain.pth` | Apache License 2.0 |
 
+Lite Classify includes no photogrammetry software. Import > Orthomosaic from Drone Photos talks
+to a WebODM installation (AGPL-3.0, OpenDroneMap) that the user installs and runs separately,
+over WebODM's HTTP API; no WebODM, NodeODM or ODM code is part of Lite Classify.
+
 Python dependencies (PySide6 — LGPL-3.0; NumPy, SciPy, scikit-image, scikit-learn,
 PyTorch, rasterio, GDAL, psutil — BSD/MIT-style licences) are installed separately and keep
 their own licences; binary builds include them under those licences.
