@@ -85,7 +85,9 @@ def build_options(quality, gsd_cm, boundary=None):
     if boundary:
         opts["boundary"] = boundary
         opts["auto-boundary"] = False
-    return [{"name": k, "value": v} for k, v in opts.items()]
+    # WebODM rejects the whole list ("Invalid options", HTTP 400) if any value is falsy, so
+    # off switches are left out; they are ODM's defaults anyway.
+    return [{"name": k, "value": v} for k, v in opts.items() if v is not False]
 
 
 # --- Photo folder summary (EXIF) ---
@@ -188,15 +190,14 @@ def project(lons, lats, epsg, inverse=False):
     return t.transform(lons, lats)
 
 
-def select_photos(xy, aoi_xy, footprint_m):
+def select_photos(xy, aoi_xy):
     """ Mask of photos to process for an area of interest (polygon vertices, same CRS as
-    xy): those within half a photo footprint of it, so the area keeps full overlap out to
-    its edges. footprint_m: (width, height) of one photo on the ground. """
+    xy): the photos taken inside it. """
     from shapely import contains_xy
     from shapely.geometry import Polygon
     if len(aoi_xy) < 3:
         return [True] * len(xy)
-    zone = Polygon(aoi_xy).buffer(max(footprint_m) / 2)
+    zone = Polygon(aoi_xy).buffer(0)
     xs = [p[0] for p in xy]
     ys = [p[1] for p in xy]
     return [bool(v) for v in contains_xy(zone, xs, ys)]

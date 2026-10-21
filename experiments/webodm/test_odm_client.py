@@ -67,6 +67,8 @@ class Fake(BaseHTTPRequestHandler):
             text = body.decode("latin-1")
             assert "resize_to" not in text, "resize_to must never be sent"
             opts = json.loads(text.split('name="options"\r\n\r\n')[1].split("\r\n")[0])
+            if not all(o.get("name") and o.get("value") for o in opts):   # WebODM's own check
+                return self._json(400, {"options": ["Invalid options"]})
             STATE["tasks"]["abc"] = {"id": "abc", "status": None, "options": opts, "images": 0,
                                      "running_progress": 0.0, "polls": 0}
             return self._json(201, STATE["tasks"]["abc"])
