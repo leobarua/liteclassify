@@ -2070,6 +2070,7 @@ class ObiaApp(QMainWindow):
             self.refresh_discover_list()
             self.show_discover_group(None)
             self.discover_viewer.set_image(self.raw_pixmap if self.raw_pixmap is not None else QImage(), grid_size=self.raw_grid)
+            self._apply_discover_layer_visibility()
             seg_ok = self.engine.segmented_image is not None
             self.disc_status_label.setText("Ready: press Find Groups." if seg_ok else "Segment an image first (Tab 1).")
             self._discover_set_enabled(False)
@@ -2875,6 +2876,8 @@ class ObiaApp(QMainWindow):
 
     def _apply_discover_layer_visibility(self):
         v = self.discover_viewer
+        # The segmentation edges exist before Find Groups too, so the toggle works on them then.
+        v.set_layer("edges", self.boundary_overlay_qimg, 1.0, z=2)
         v.set_layer_opacity("groups", self.disc_opacity_slider.value() / 100.0 if self.disc_overlay_check.isChecked() else 0.0)
         v.set_layer_opacity("edges", 1.0 if self.disc_edges_check.isChecked() else 0.0)
 
