@@ -18,8 +18,8 @@ authors:
 repository-code: "https://github.com/leobarua/liteclassify"
 url: "https://leobarua.github.io/liteclassify/manual/"
 license: GPL-3.0-only
-version: "1.0"
-date-released: "2026-10-19"
+version: "1.1"
+date-released: "2026-10-22"
 doi: "10.5281/zenodo.23462352"
 identifiers:
   - type: doi
