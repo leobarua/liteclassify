@@ -418,8 +418,25 @@ class WebODMClient:
     def cancel(self, project, task):
         return self._post_json(self._task_path(project, task, "cancel"))
 
-    def remove(self, project, task):
-        return self._post_json(self._task_path(project, task, "remove"))
+    def remove(self, project, task, wait_s=0):
+        """ Deletes a task and its files; this alone also stops a running one. Never send
+        cancel first: WebODM's worker finishes a cancel by clearing the pending action,
+        which drops a remove queued behind it. wait_s: seconds to wait for the deletion
+        (WebODM's worker does it a moment later); raises if it hasn't happened by then. """
+        self._post_json(self._task_path(project, task, "remove"))
+        end = time.time() + wait_s
+        while wait_s:
+            try:
+                self.task(project, task)
+            except WebODMError as e:
+                if "HTTP 404" in str(e):
+                    return True
+                raise
+            if time.time() > end:
+                raise WebODMError("WebODM has not deleted the task yet; use Clear WebODM Cache later "
+                                  "to free its disk space.")
+            time.sleep(2)
+        return True
 
     def output(self, project, task, line=0):
         """ Console lines from `line` on, and the total line count. """

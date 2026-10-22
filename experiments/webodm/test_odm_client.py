@@ -103,6 +103,8 @@ class Fake(BaseHTTPRequestHandler):
             return self._json(200, list(STATE["tasks"].values()))
         t = STATE["tasks"].get("abc")
         if p == "/api/projects/7/tasks/abc/":
+            if t is None:
+                return self._json(404, {"detail": "Not found."})
             t["polls"] += 1
             if t["status"] in (odm.QUEUED, odm.RUNNING):
                 t["status"] = odm.RUNNING
@@ -183,7 +185,7 @@ if __name__ == "__main__":
     assert odm.check_outputs(o, o, 4.32), "colour DSM not caught"
     assert odm.check_outputs(o, s, 4.32, ["Maximum resolution set to 7.39 cm/pixel"]), "cap not caught"
     assert [x["id"] for x in c.tasks(pid)] == ["abc"]
-    c.remove(pid, t["id"])
+    assert c.remove(pid, t["id"], wait_s=10)
     assert "abc" not in STATE["tasks"] and c.tasks(pid) == []
     assert STATE["logins"] > 2, "token expiry was never exercised"
     assert odm.options_match(opts, [{"name": "fast-orthophoto", "value": True}])

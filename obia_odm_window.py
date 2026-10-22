@@ -24,6 +24,7 @@ import obia_odm as odm
 from obia_ui import CollapsibleSection
 
 POLL_S = 5
+REMOVE_WAIT_S = 120
 ORTHO_NAME, DSM_NAME = "odm_orthophoto.tif", "odm_dsm.tif"
 
 
@@ -125,7 +126,7 @@ class OdmJobWorker(QObject):
                 if st == odm.FAILED:
                     raise odm.WebODMError(f"WebODM reported a failure: {info.get('last_error') or 'see the log'}")
                 if st == odm.CANCELED:
-                    return self._end_cancelled(already=True)
+                    return self._end_cancelled()
                 self._sleep(POLL_S)
 
             os.makedirs(job["out_dir"], exist_ok=True)
@@ -143,18 +144,19 @@ class OdmJobWorker(QObject):
                 # Keep the task in WebODM so nothing is lost while this is looked into.
                 raise odm.WebODMError("The downloaded files did not pass the checks (the task is kept "
                                       "in WebODM):\n" + "\n".join(problems))
-            c.remove(job["project"], job["task"])
+            try:
+                c.remove(job["project"], job["task"], wait_s=REMOVE_WAIT_S)
+            except odm.WebODMError as e:
+                self.log_lines.emit([str(e)])           # the results are safe; only cleanup lags
             self.finished.emit(ortho, dsm)
         except Exception as e:
             self.failed.emit(str(e))
 
-    def _end_cancelled(self, already=False):
+    def _end_cancelled(self):
         try:
-            if not already:
-                self.client.cancel(self.job["project"], self.job["task"])
-            self.client.remove(self.job["project"], self.job["task"])
-        except odm.WebODMError:
-            pass
+            self.client.remove(self.job["project"], self.job["task"], wait_s=REMOVE_WAIT_S)
+        except odm.WebODMError as e:
+            return self.failed.emit(f"Cancelled, but {e}")
         self.cancelled.emit()
 
 
@@ -611,8 +613,6 @@ class OdmWindow(QDialog):
             project = c.ensure_project()
             gone = [t for t in c.tasks(project) if t.get("id") != keep]
             for t in gone:
-                if t.get("status") in (odm.QUEUED, odm.RUNNING):
-                    c.cancel(project, t["id"])
                 c.remove(project, t["id"])
         except odm.WebODMError as e:
             QApplication.restoreOverrideCursor()
