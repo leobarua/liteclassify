@@ -9,6 +9,7 @@ the next start (WebODM keeps processing either way).
 import json
 import os
 import time
+import urllib.parse
 
 from PySide6.QtCore import QObject, QPointF, QRectF, QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
@@ -373,11 +374,6 @@ class OdmWindow(QDialog):
         self.remember_check.setChecked(s.value("webodm/remember", "false") == "true")
         self.remember_check.setEnabled(os.name == "nt")
         form.addRow("", self.remember_check)
-        self.clear_btn = QPushButton("Clear WebODM Cache")
-        self.clear_btn.setToolTip("Delete every task Lite Classify left in WebODM (its \"Lite Classify\" "
-                                  "project), with their photos and results, to free disk space.")
-        self.clear_btn.clicked.connect(self.clear_cache)
-        form.addRow("", self.clear_btn)
         has_login = bool(self.user_edit.text() and self.pass_edit.text())
         lay.addWidget(CollapsibleSection("Connection", conn, start_collapsed=has_login))
 
@@ -468,8 +464,12 @@ class OdmWindow(QDialog):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self.cancel)
+        self.clean_btn = QPushButton("Clean Up WebODM\u2026")
+        self.clean_btn.setToolTip("Remove leftover Lite Classify tasks and stale upload files from WebODM")
+        self.clean_btn.clicked.connect(self.clean_up)
         btns.addWidget(self.start_btn)
         btns.addWidget(self.cancel_btn)
+        btns.addWidget(self.clean_btn)
         lay.addLayout(btns)
 
         self.stage_label = QLabel("")
@@ -599,29 +599,72 @@ class OdmWindow(QDialog):
         self.selection_label.setText(f"{n} of {len(self.positions)} photos selected ({size / 1e9:.1f} GB), "
                                      f"{what}.")
 
-    def clear_cache(self):
-        """ Removes every task in WebODM's "Lite Classify" project except the job in progress. """
-        if QMessageBox.question(self, "Clear WebODM Cache",
-                                "Delete all tasks Lite Classify left in WebODM, with their photos and "
-                                "results? A job in progress is kept. Your photo folders and saved results "
-                                "are not touched.") != QMessageBox.Yes:
-            return
-        keep = (saved_job() or {}).get("task")          # a job in progress stays
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+    def clean_up(self):
+        """ Removes what Lite Classify jobs can leave in WebODM: tasks in the Lite Classify
+        project (except the running job's) and, for a WebODM on this PC, upload temp files
+        it did not delete. Lists everything and asks first. """
         try:
             c = self._client()
-            project = c.ensure_project()
-            gone = [t for t in c.tasks(project) if t.get("id") != keep]
-            for t in gone:
-                c.remove(project, t["id"])
         except odm.WebODMError as e:
-            QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, "WebODM", str(e))
             return
-        QApplication.restoreOverrideCursor()
-        QMessageBox.information(self, "Clear WebODM Cache",
-                                f"Removed {len(gone)} task(s) from WebODM." if gone else
-                                "WebODM has no Lite Classify tasks left; nothing to remove.")
+        running = (self.worker.job if self.worker is not None else saved_job()) or {}
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            pid = c.find_project()
+            tasks = [t for t in (c.tasks(pid) if pid else []) if t.get("id") != running.get("task")]
+            local = urllib.parse.urlparse(c.url).hostname in ("127.0.0.1", "localhost")
+            app_dir = odm.local_webodm_app_dir() if local else None
+            stale = odm.stale_upload_files(app_dir) if app_dir else []
+        except odm.WebODMError as e:
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not tasks and not stale:
+            QMessageBox.information(self, "Clean Up WebODM", "Nothing to clean up."
+                                    + ("" if app_dir or not local else "\n(WebODM's own folder was "
+                                       "not found, so its upload files were not checked.)"))
+            return
+        lines = []
+        if tasks:
+            lines.append(f"Remove {len(tasks)} task(s) from the \"{odm.PROJECT_NAME}\" project in WebODM:")
+            for t in tasks[:12]:
+                size = f", {t['size'] / 1024:.1f} GB" if t.get("size") else ""
+                lines.append(f"  • {t.get('name') or t['id']} "
+                             f"({odm.STATUS_NAMES.get(t.get('status'), 'Waiting')}{size})")
+            if len(tasks) > 12:
+                lines.append(f"  • … and {len(tasks) - 12} more")
+        if stale:
+            gb = sum(s for _, s in stale) / 1e9
+            lines.append(f"Delete {len(stale)} leftover upload file(s), {gb:.2f} GB, from "
+                         f"{os.path.join(app_dir, 'data', 'media', 'tmp')} and NodeODX's tmp folder.")
+        if QMessageBox.question(self, "Clean Up WebODM", "\n".join(lines) + "\n\nThis cannot be undone.") \
+                != QMessageBox.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for t in tasks:
+                c.remove(pid, t["id"])
+            left, end = list(tasks), time.time() + 120
+            while left and time.time() < end:
+                QApplication.processEvents()
+                time.sleep(0.5)
+                left = [t for t in left if c.exists(pid, t["id"])]
+            freed, failed = odm.delete_paths(stale)
+        except odm.WebODMError as e:
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        msg = []
+        if tasks:
+            msg.append(f"Removed {len(tasks) - len(left)} of {len(tasks)} task(s)."
+                       + (" WebODM is still deleting the rest." if left else ""))
+        if stale:
+            msg.append(f"Deleted {freed / 1e9:.2f} GB of upload files."
+                       + (f" {len(failed)} could not be deleted (in use)." if failed else ""))
+        QMessageBox.information(self, "Clean Up WebODM", "\n".join(msg))
 
     def _client(self):
         url, user, pw = self.url_edit.text().strip(), self.user_edit.text().strip(), self.pass_edit.text()

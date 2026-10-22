@@ -85,9 +85,9 @@ def build_options(quality, gsd_cm, boundary=None):
     if boundary:
         opts["boundary"] = boundary
         opts["auto-boundary"] = False
-    # WebODM rejects the whole list ("Invalid options", HTTP 400) if any value is falsy, so
-    # off switches are left out; they are ODM's defaults anyway.
-    return [{"name": k, "value": v} for k, v in opts.items() if v is not False]
+    # Booleans go as "true"/"false": WebODM rejects any falsy option value ("Invalid
+    # options", HTTP 400) and NodeODX parses the strings.
+    return [{"name": k, "value": str(v).lower() if isinstance(v, bool) else v} for k, v in opts.items()]
 
 
 # --- Photo folder summary (EXIF) ---
@@ -348,7 +348,7 @@ class WebODMClient:
         nodes = self._get("/api/processingnodes/") or []
         return [n for n in nodes if n.get("online")]
 
-    def ensure_project(self, name=PROJECT_NAME):
+    def find_project(self, name=PROJECT_NAME):
         page = "/api/projects/?ordering=-created_at"
         while page:
             res = self._get(page)
@@ -358,7 +358,11 @@ class WebODMClient:
                     return p["id"]
             nxt = res.get("next") if isinstance(res, dict) else None
             page = nxt[len(self.url):] if nxt and nxt.startswith(self.url) else None
-        return self._post_json("/api/projects/", {"name": name, "description": "Created by Lite Classify"})["id"]
+        return None
+
+    def ensure_project(self, name=PROJECT_NAME):
+        return (self.find_project(name) or
+                self._post_json("/api/projects/", {"name": name, "description": "Created by Lite Classify"})["id"])
 
     # --- tasks ---
     def _task_path(self, project, task, action=""):
@@ -426,17 +430,22 @@ class WebODMClient:
         self._post_json(self._task_path(project, task, "remove"))
         end = time.time() + wait_s
         while wait_s:
-            try:
-                self.task(project, task)
-            except WebODMError as e:
-                if "HTTP 404" in str(e):
-                    return True
-                raise
+            if not self.exists(project, task):
+                return True
             if time.time() > end:
-                raise WebODMError("WebODM has not deleted the task yet; use Clear WebODM Cache later "
+                raise WebODMError("WebODM has not deleted the task yet; use Clean Up WebODM… later "
                                   "to free its disk space.")
             time.sleep(2)
         return True
+
+    def exists(self, project, task):
+        try:
+            self.task(project, task)
+            return True
+        except WebODMError as e:
+            if "(HTTP 404)" in str(e):
+                return False
+            raise
 
     def output(self, project, task, line=0):
         """ Console lines from `line` on, and the total line count. """
@@ -520,3 +529,67 @@ def free_disk_bytes(path):
         return shutil.disk_usage(path).free
     except OSError:
         return None
+
+
+# --- Leftover upload files of a WebODM running on this PC ---
+
+def local_webodm_app_dir():
+    """ resources/app of the native Windows WebODM that is running, or None. """
+    if os.name != "nt":
+        return None
+    import subprocess
+    try:
+        exe = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "(Get-Process -Name WebODM -ErrorAction SilentlyContinue | "
+                              "Select-Object -First 1).Path"],
+                             capture_output=True, text=True, timeout=15,
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    app = os.path.join(os.path.dirname(exe), "resources", "app") if exe else ""
+    return app if os.path.isdir(os.path.join(app, "data", "media")) else None
+
+
+def stale_upload_files(app_dir, min_age_s=3600):
+    """ Upload temp files WebODM left behind, as [(path, bytes)]: *.upload files in
+    data/media/tmp (on Windows Django cannot delete them while they are still open) and
+    NodeODX's upload folders in apps/NodeODX/tmp. Only those untouched for min_age_s, so a
+    running upload is never included. """
+    now, out = time.time(), []
+
+    def add(path):
+        try:
+            if os.path.isdir(path):
+                files = [os.path.join(r, f) for r, _, fs in os.walk(path) for f in fs]
+                newest = max([os.path.getmtime(f) for f in files] + [os.path.getmtime(path)])
+                size = sum(os.path.getsize(f) for f in files)
+            else:
+                newest, size = os.path.getmtime(path), os.path.getsize(path)
+        except OSError:
+            return
+        if now - newest >= min_age_s:
+            out.append((path, size))
+
+    media_tmp = os.path.join(app_dir, "data", "media", "tmp")
+    node_tmp = os.path.join(app_dir, "apps", "NodeODX", "tmp")
+    for d, keep in ((media_tmp, lambda n: n.endswith(".upload")), (node_tmp, lambda n: True)):
+        if os.path.isdir(d):
+            for n in os.listdir(d):
+                if keep(n):
+                    add(os.path.join(d, n))
+    return out
+
+
+def delete_paths(paths):
+    """ Deletes files and folders; the bytes freed and the paths that could not be deleted. """
+    freed, failed = 0, []
+    for p, size in paths:
+        try:
+            if os.path.isdir(p):
+                shutil.rmtree(p)
+            else:
+                os.remove(p)
+            freed += size
+        except OSError:
+            failed.append(p)
+    return freed, failed
