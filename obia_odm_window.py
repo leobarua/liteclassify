@@ -667,7 +667,8 @@ class OdmWindow(QDialog):
         job = {"project": None, "task": None, "out_dir": out_dir, "gsd_cm": gsd,
                "name": f"{name} (Lite Classify)",
                "options": odm.build_options(self.quality_combo.currentText(), gsd, boundary),
-               "photos": photos, "started": time.time()}
+               "photos": photos, "started": time.time(),
+               "folder": folder, "aoi": [list(p) for p in self.aoi]}
         self.log_view.clear()
         self.log_view.appendPlainText(f"{len(photos)} photos, settings sent to WebODM:\n" + " ".join(
             f"--{o['name']} {o['value'] if o['name'] != 'boundary' else '<drawn area>'}"
@@ -679,6 +680,7 @@ class OdmWindow(QDialog):
         job = saved_job()
         if not job or self.thread is not None:
             return
+        self._show_job_photos(job)
         try:
             client = self._client()
         except odm.WebODMError as e:
@@ -690,6 +692,20 @@ class OdmWindow(QDialog):
             return
         self.out_edit.setText(job["out_dir"])
         self._run(client, job)
+
+    def _show_job_photos(self, job):
+        """ Fills the photo folder and drawn area of a resumed job, so its map shows. """
+        folder = job.get("folder")
+        if not folder or not os.path.isdir(folder) or self.photos_edit.text().strip() == folder:
+            return
+        self.photos_edit.setText(folder)
+        self._summarize()
+        if job.get("gsd_cm"):
+            self.res_spin.setValue(job["gsd_cm"])
+        aoi = [tuple(p) for p in job.get("aoi") or []]
+        if aoi and self.positions:
+            self.map_view._show_aoi(aoi)
+            self._on_aoi(aoi)
 
     def _reconnect(self):
         self.start_btn.setText("Start Processing")
