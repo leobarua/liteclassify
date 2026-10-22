@@ -97,8 +97,10 @@ def edge_flags(cents, valid_mask, pixel_size):
     return vm[rc[:, 0], rc[:, 1]] < EDGE_VALID_MIN
 
 
-def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, progress=None):
+def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, progress=None, cancelled=None):
     """
+    cancelled: optional callable checked between batches; when it returns True the run
+    stops and None is returned.
     Returns dict(ids, feats {patch_m: (n, 384) float16}, edge (n,) bool, seconds, device).
     rgb_chw: uint8 (3, H, W) orthomosaic on the segmentation grid.
     """
@@ -122,6 +124,11 @@ def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, prog
         out = np.empty((len(ids), 384), dtype=np.float16)
         with torch.no_grad():
             for i in range(0, len(ids), batch):
+                if cancelled is not None and cancelled():
+                    del model
+                    if device == "cuda":
+                        torch.cuda.empty_cache()
+                    return None
                 crops = [padded[:, r:r + 2 * half, c:c + 2 * half] for r, c in rc[i:i + batch]]
                 x = torch.from_numpy(np.stack(crops)).to(device).float() / 255.0
                 x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False, antialias=True)

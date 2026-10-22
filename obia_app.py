@@ -23,11 +23,12 @@ from skimage import exposure
 from sklearn.ensemble import RandomForestClassifier
 
 # Import modular components
-from obia_engine import ObiaEngine, cuda_available, working_bytes, free_ram_bytes
+from obia_engine import ObiaEngine, Cancelled, cuda_available, working_bytes, free_ram_bytes
 from obia_ui import InteractivePhotoViewer, ClassListDelegate, ToggleSwitch, CollapsibleSection, render_confusion_matrix_image, render_separability_image
 from obia_ui import GroupCard, ChipPickerDialog, make_chip_qimage, chip_strip_pixmap
 from obia_ui import ChipGallery, ClassNameCombo, suggest_class_color, rgba_premultiplied, ElidedInfoLabel
 import obia_discover as od
+from obia_odm_window import OdmWindow, saved_job
 import shutil
 
 import app_info
@@ -147,10 +148,12 @@ class SegmentationWorker(QObject):
     # Emits: (segmented_image, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration)
     finished = Signal(object, object, object, int, float)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, engine, n_segments, compactness, sigma, app_instance, force_device="auto"):
         super().__init__()
         self.engine = engine
+        self.snapshot = engine.snapshot()     # put back if the run is cancelled
         self.n_segments = n_segments
         self.compactness = compactness
         self.sigma = sigma
@@ -170,6 +173,7 @@ class SegmentationWorker(QObject):
                 force_device=self.force_device
             )
             segmented = self.engine.segmented_image
+            self.engine.check_cancel()
             self.engine.build_adjacency_graph()
 
             if segmented is None:
@@ -181,18 +185,24 @@ class SegmentationWorker(QObject):
             base_seg_qimg, boundary_overlay_qimg = build_boundary_and_visual_caches(self.engine)
 
             # [Step 3/4] Compiling spatial geometries (Polygon tracing)
+            self.engine.check_cancel()
             print("[Step 3/4] Vectorizing segments into crisp polygon layers...")
             self.engine.vectorize_segments()
             num_polygons = len(self.engine.segments_gdf)
 
             # [Step 4/4] Multi-core texture feature extraction
+            self.engine.check_cancel()
             print("[Step 4/4] Pre-computing 19D / 23D texture and shape features in parallel...")
             self.engine.compute_all_features_parallel()
+            self.engine.check_cancel()
             self.engine.compute_neighbor_relative_features()
             self.engine.compute_height_features()
 
             duration = time.time() - start_time
             self.finished.emit(segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration)
+        except Cancelled:
+            self.engine.restore(self.snapshot)
+            self.cancelled.emit()
         except Exception:
             import traceback
             self.failed.emit(traceback.format_exc())
@@ -203,18 +213,24 @@ class DeepFeatureWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int)
+    cancelled = Signal()
 
     def __init__(self, engine):
         super().__init__()
         self.engine = engine
+        self.cancel_requested = False
 
     def run(self):
         try:
             e = self.engine
             deep = od.compute_deep_features(e.original_ortho_data, e.segmented_image, e.valid_mask,
                                             e.effective_pixel_size or 0.1,
-                                            progress=lambda d, n: self.progress.emit(d, n))
-            self.finished.emit(deep)
+                                            progress=lambda d, n: self.progress.emit(d, n),
+                                            cancelled=lambda: self.cancel_requested)
+            if deep is None:
+                self.cancelled.emit()
+            else:
+                self.finished.emit(deep)
         except Exception:
             import traceback
             self.failed.emit(traceback.format_exc())
@@ -383,6 +399,18 @@ class ObiaApp(QMainWindow):
         self.init_menu_bar()
         self._saved_sig = self._state_signature()
 
+        # WebODM: a job left running by an earlier session shows in the status bar and is
+        # picked up again (the window itself stays closed until asked for).
+        self.odm_window = None
+        self.odm_status_btn = QPushButton()
+        self.odm_status_btn.setFlat(True)
+        self.odm_status_btn.setToolTip("Show the WebODM window")
+        self.odm_status_btn.clicked.connect(self.open_odm_window)
+        self.odm_status_btn.setVisible(False)
+        self.statusBar().addPermanentWidget(self.odm_status_btn)
+        if saved_job():
+            self._ensure_odm_window()
+
         # Every map gets the tallest header (Discover's two rows) and the same hint line,
         # so the map area keeps its size from tab to tab.
         for group in (self._map_headers, self._map_tips):
@@ -423,6 +451,10 @@ class ObiaApp(QMainWindow):
         file_menu.insertSeparator(self.act_save_workspace)
 
         import_menu = mb.addMenu("&Import")
+        self.act_import_webodm = import_menu.addAction("Orthomosaic from Drone &Photos (WebODM)…",
+                                                       self.open_odm_window)
+        self.act_import_webodm.setStatusTip("Process a folder of drone photos with your WebODM installation")
+        import_menu.addSeparator()
         self.act_import_ortho = import_menu.addAction("&Orthomosaic…", self.browse_for_ortho)
         self.act_import_dsm = import_menu.addAction("&DSM…", self.browse_for_dsm)
         import_menu.addSeparator()
@@ -569,9 +601,45 @@ class ObiaApp(QMainWindow):
 
     def closeEvent(self, event):
         if self.confirm_discard_changes("Close Lite Classify"):
+            if self.odm_window is not None and self.odm_window.is_running():
+                self.odm_window.detach()   # WebODM keeps going; picked up on the next start
             event.accept()
         else:
             event.ignore()
+
+    # --- WebODM (Import > Orthomosaic from Drone Photos) ---
+    def _ensure_odm_window(self):
+        if self.odm_window is None:
+            self.odm_window = OdmWindow(self)
+            self.odm_window.status_text.connect(self._on_odm_status)
+            self.odm_window.load_requested.connect(self.load_webodm_result)
+        return self.odm_window
+
+    def open_odm_window(self):
+        w = self._ensure_odm_window()
+        w.show()
+        w.raise_()
+        w.activateWindow()
+
+    def _on_odm_status(self, text):
+        self.odm_status_btn.setText(text)
+        self.odm_status_btn.setVisible(bool(text))
+
+    def load_webodm_result(self, ortho, dsm):
+        """ Loads a finished WebODM orthomosaic and DSM into Tab 1, replacing the current
+        workspace after the usual unsaved-changes prompt. """
+        if self.engine.ortho_data is not None:
+            if not self.confirm_discard_changes("Load WebODM Result"):
+                return
+            self._clear_session()
+        self.tabs.setCurrentIndex(0)
+        self.path_edit.setText(ortho)
+        self.load_ortho()
+        if self.engine.ortho_data is not None and os.path.exists(dsm):
+            self.dsm_path_edit.setText(dsm)
+            self.load_dsm()
+        self.raise_()
+        self.activateWindow()
 
     # --- TAB 1: Load, View & Segment (merged Load&View + Segmentation) ---
     def init_load_view_tab(self):
@@ -606,6 +674,10 @@ class ObiaApp(QMainWindow):
         path_layout.addWidget(self.path_edit)
         path_layout.addWidget(browse_btn)
         input_layout.addLayout(path_layout)
+        webodm_link = QLabel('<a href="#">No orthomosaic yet? Process drone photos…</a>')
+        webodm_link.setToolTip("Import > Orthomosaic from Drone Photos (WebODM)")
+        webodm_link.linkActivated.connect(lambda _: self.open_odm_window())
+        input_layout.addWidget(webodm_link)
 
         input_layout.addWidget(QLabel("Elevation Model (Optional DSM):"))
         dsm_path_lay = QHBoxLayout()
@@ -858,6 +930,12 @@ class ObiaApp(QMainWindow):
         self.run_seg_btn = QPushButton("Run Segmentation")
         self.run_seg_btn.clicked.connect(self.run_segmentation)
         io_layout.addWidget(self.run_seg_btn)
+        self.cancel_seg_btn = QPushButton("Cancel")
+        self.cancel_seg_btn.setToolTip("Stop segmenting and keep the previous result. Takes effect at "
+                                       "the next checkpoint (between tiles, or during feature measurement).")
+        self.cancel_seg_btn.clicked.connect(self.cancel_segmentation)
+        self.cancel_seg_btn.setVisible(False)
+        io_layout.addWidget(self.cancel_seg_btn)
         io_group.setLayout(io_layout)
         controls_layout.addWidget(io_group)
 
@@ -1648,6 +1726,10 @@ class ObiaApp(QMainWindow):
         force_device = "gpu" if self.gpu_radio.isChecked() else "cpu"
         self.run_seg_btn.setEnabled(False)
         self.run_seg_btn.setText("Processing...")
+        self.engine.cancel_requested = False
+        self.cancel_seg_btn.setEnabled(True)
+        self.cancel_seg_btn.setText("Cancel")
+        self.cancel_seg_btn.setVisible(True)
 
         self.seg_thread = QThread()
         self.seg_worker = SegmentationWorker(
@@ -1663,8 +1745,11 @@ class ObiaApp(QMainWindow):
         self.seg_thread.started.connect(self.seg_worker.run)
         self.seg_worker.finished.connect(self.on_segmentation_finished)
         self.seg_worker.failed.connect(self.on_segmentation_failed)
+        self.seg_worker.cancelled.connect(self.on_segmentation_cancelled)
 
         self.seg_worker.finished.connect(self.seg_thread.quit)
+        self.seg_worker.failed.connect(self.seg_thread.quit)
+        self.seg_worker.cancelled.connect(self.seg_thread.quit)
         self.seg_worker.finished.connect(self.seg_worker.deleteLater)
         self.seg_thread.finished.connect(self.seg_thread.deleteLater)
 
@@ -1684,9 +1769,24 @@ class ObiaApp(QMainWindow):
         self.base_seg_qimg, self.boundary_overlay_qimg = build_boundary_and_visual_caches(self.engine)
         self._invalidate_display_caches()
 
-    def on_segmentation_finished(self, segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration):
+    def cancel_segmentation(self):
+        self.engine.cancel_requested = True
+        self.cancel_seg_btn.setEnabled(False)
+        self.cancel_seg_btn.setText("Cancelling…")
+        print("Cancelling segmentation at the next checkpoint...")
+
+    def _seg_controls_idle(self):
         self.run_seg_btn.setEnabled(True)
         self.run_seg_btn.setText("Run Segmentation")
+        self.cancel_seg_btn.setVisible(False)
+        self.engine.cancel_requested = False
+
+    def on_segmentation_cancelled(self):
+        self._seg_controls_idle()
+        print(">>> Segmentation cancelled; the previous result (if any) is unchanged. <<<")
+
+    def on_segmentation_finished(self, segmented, base_seg_qimg, boundary_overlay_qimg, num_polygons, duration):
+        self._seg_controls_idle()
 
         self.base_seg_qimg = base_seg_qimg
         self.boundary_overlay_qimg = boundary_overlay_qimg
@@ -1740,8 +1840,7 @@ class ObiaApp(QMainWindow):
             print(f" -> Freed {freed / 1e9:.1f} GB (DSM grid copies; rebuilt automatically if needed).")
 
     def on_segmentation_failed(self, traceback_str):
-        self.run_seg_btn.setEnabled(True)
-        self.run_seg_btn.setText("Run Segmentation")
+        self._seg_controls_idle()
         print(f"Segmentation Thread Error:\n{traceback_str}")
 
     # --- TAB 2: Discover Classes ---
@@ -1796,6 +1895,11 @@ class ObiaApp(QMainWindow):
             "QPushButton:disabled { background-color: #d3a29c; color: #f2e6e4; }")
         self.disc_find_btn.clicked.connect(self.discover_find_groups)
         fg.addWidget(self.disc_find_btn)
+        self.disc_cancel_btn = QPushButton("Cancel")
+        self.disc_cancel_btn.setToolTip("Stop computing deep features")
+        self.disc_cancel_btn.clicked.connect(self.cancel_deep_features)
+        self.disc_cancel_btn.setVisible(False)
+        fg.addWidget(self.disc_cancel_btn)
         self.disc_status_label = QLabel("Segment an image first (Tab 1).")
         self.disc_status_label.setWordWrap(True)
         self.disc_status_label.setStyleSheet("color: #8fbf9a;")
@@ -1966,6 +2070,7 @@ class ObiaApp(QMainWindow):
             self.refresh_discover_list()
             self.show_discover_group(None)
             self.discover_viewer.set_image(self.raw_pixmap if self.raw_pixmap is not None else QImage(), grid_size=self.raw_grid)
+            self._apply_discover_layer_visibility()
             seg_ok = self.engine.segmented_image is not None
             self.disc_status_label.setText("Ready: press Find Groups." if seg_ok else "Segment an image first (Tab 1).")
             self._discover_set_enabled(False)
@@ -2144,8 +2249,13 @@ class ObiaApp(QMainWindow):
         self.deep_worker.progress.connect(self._on_deep_progress)
         self.deep_worker.finished.connect(self._on_deep_finished)
         self.deep_worker.failed.connect(self._on_deep_failed)
+        self.deep_worker.cancelled.connect(self._on_deep_cancelled)
         self.deep_worker.finished.connect(self.deep_thread.quit)
         self.deep_worker.failed.connect(self.deep_thread.quit)
+        self.deep_worker.cancelled.connect(self.deep_thread.quit)
+        self.disc_cancel_btn.setEnabled(True)
+        self.disc_cancel_btn.setText("Cancel")
+        self.disc_cancel_btn.setVisible(True)
         self.deep_worker.finished.connect(self.deep_worker.deleteLater)
         self.deep_thread.finished.connect(self.deep_thread.deleteLater)
         self.deep_thread.start()
@@ -2158,9 +2268,25 @@ class ObiaApp(QMainWindow):
             eta = f" · about {self._fmt_duration(left)} left"
         self.disc_status_label.setText(f"Deep features: {done:,} / {total:,} patches{eta}")
 
-    def _on_deep_finished(self, deep):
+    def cancel_deep_features(self):
+        if getattr(self, "deep_worker", None) is not None:
+            self.deep_worker.cancel_requested = True
+            self.disc_cancel_btn.setEnabled(False)
+            self.disc_cancel_btn.setText("Cancelling…")
+
+    def _deep_controls_idle(self):
         self.disc_find_btn.setEnabled(True)
         self.disc_find_btn.setText("Find Groups")
+        self.disc_cancel_btn.setVisible(False)
+
+    def _on_deep_cancelled(self):
+        self._deep_controls_idle()
+        self.deep_worker = None
+        print("Deep features cancelled.")
+        self.disc_status_label.setText("Cancelled. Press Find Groups to start again.")
+
+    def _on_deep_finished(self, deep):
+        self._deep_controls_idle()
         self.deep = deep
         print(f" -> Deep features done on {deep['device'].upper()} in {deep['seconds']:.0f} s.")
         if self.workspace_dir:
@@ -2173,8 +2299,7 @@ class ObiaApp(QMainWindow):
         self._discover_group_now()
 
     def _on_deep_failed(self, tb):
-        self.disc_find_btn.setEnabled(True)
-        self.disc_find_btn.setText("Find Groups")
+        self._deep_controls_idle()
         print(f"Deep features failed:\n{tb}")
         self.disc_status_label.setText("Deep features failed (see log). Untick Appearance to group on the classifier features only.")
 
@@ -2751,6 +2876,8 @@ class ObiaApp(QMainWindow):
 
     def _apply_discover_layer_visibility(self):
         v = self.discover_viewer
+        # The segmentation edges exist before Find Groups too, so the toggle works on them then.
+        v.set_layer("edges", self.boundary_overlay_qimg, 1.0, z=2)
         v.set_layer_opacity("groups", self.disc_opacity_slider.value() / 100.0 if self.disc_overlay_check.isChecked() else 0.0)
         v.set_layer_opacity("edges", 1.0 if self.disc_edges_check.isChecked() else 0.0)
 

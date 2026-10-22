@@ -80,7 +80,7 @@ To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md); contributions require a
 
 If you publish work made with Lite Classify, please cite the version you used:
 
-> Barua, L. D. (2026). *Lite Classify* (Version 1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23462353
+> Barua, L. D. (2026). *Lite Classify* (Version 1.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23462353
 
 To cite all versions, use the concept DOI
 [10.5281/zenodo.23462352](https://doi.org/10.5281/zenodo.23462352). Other formats (BibTeX, APA)

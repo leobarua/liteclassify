@@ -1,13 +1,13 @@
 ; Lite Classify installer (Inno Setup 6). One script, two editions:
-;   ISCC /DEdition=CPU /DAppVersion=1.0 installer\liteclassify.iss    (from dist\cpu\LiteClassify)
-;   ISCC /DEdition=GPU /DAppVersion=1.0 installer\liteclassify.iss    (from dist\gpu\LiteClassify)
+;   ISCC /DEdition=CPU /DAppVersion=1.1 installer\liteclassify.iss    (from dist\cpu\LiteClassify)
+;   ISCC /DEdition=GPU /DAppVersion=1.1 installer\liteclassify.iss    (from dist\gpu\LiteClassify)
 ; installer\build_installers.py builds both apps and both installers. See installer\README.md.
 
 #ifndef Edition
   #define Edition "CPU"
 #endif
 #ifndef AppVersion
-  #define AppVersion "1.0"
+  #define AppVersion "1.1"
 #endif
 #if Edition == "GPU"
   #define SourceDir "..\dist\gpu\LiteClassify"

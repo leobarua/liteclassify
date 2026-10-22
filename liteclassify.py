@@ -138,7 +138,7 @@ def splash_pixmap(dpr=2.0, name=None):
 
 class Splash(QSplashScreen):
     def __init__(self):
-        super().__init__(splash_pixmap(), Qt.WindowStaysOnTopHint)
+        super().__init__(splash_pixmap())        # not stay-on-top: other windows may cover it
         self.setFont(_font(12, QFont.Normal))
         self.shown_at = time.monotonic()
 
