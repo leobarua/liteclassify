@@ -67,6 +67,8 @@ class Fake(BaseHTTPRequestHandler):
             text = body.decode("latin-1")
             assert "resize_to" not in text, "resize_to must never be sent"
             opts = json.loads(text.split('name="options"\r\n\r\n')[1].split("\r\n")[0])
+            if not all(o.get("name") and o.get("value") for o in opts):   # WebODM's validate_task_options
+                return self._json(400, {"options": ["Invalid options"]})
             STATE["tasks"]["abc"] = {"id": "abc", "status": None, "options": opts, "images": 0,
                                      "running_progress": 0.0, "polls": 0}
             return self._json(201, STATE["tasks"]["abc"])
@@ -80,7 +82,7 @@ class Fake(BaseHTTPRequestHandler):
             t["status"] = odm.QUEUED
             return self._json(200, t)
         if p.endswith("/remove/"):
-            STATE["tasks"].pop("abc")
+            t["pending_action"] = "remove"          # deleted later by WebODM's worker
             return self._json(200, {"success": True})
         if p.endswith("/cancel/"):
             t["status"] = odm.CANCELED
@@ -98,6 +100,16 @@ class Fake(BaseHTTPRequestHandler):
         if p.startswith("/api/projects/?"):
             return self._json(200, {"count": 1, "next": None, "results": [{"id": 3, "name": "Other"}]})
         t = STATE["tasks"].get("abc")
+        if t and t.get("pending_action") == "remove":
+            if t.setdefault("remove_polls", 0) >= 1:
+                STATE["tasks"].pop("abc")
+                t = None
+            else:
+                t["remove_polls"] += 1
+        if p == "/api/projects/7/tasks/":
+            return self._json(200, list(STATE["tasks"].values()))
+        if t is None:
+            return self._json(404, {"detail": "Not found."})
         if p == "/api/projects/7/tasks/abc/":
             t["polls"] += 1
             if t["status"] in (odm.QUEUED, odm.RUNNING):
@@ -152,7 +164,8 @@ if __name__ == "__main__":
     assert len(c.online_nodes()) == 1
     pid = c.ensure_project()
     assert pid == 7, pid
-    opts = odm.build_options("Standard", 4.32)
+    opts = odm.build_options("Standard", 4.32, '{"type": "FeatureCollection", "features": []}')
+    assert {"name": "auto-boundary", "value": "false"} in opts, opts
     t = c.create_task(pid, "test", opts)
     assert odm.options_match(opts, c.task(pid, t["id"])["options"]) == []
     photos = []
@@ -178,8 +191,9 @@ if __name__ == "__main__":
     assert odm.check_outputs(o, s, 4.32) == []
     assert odm.check_outputs(o, o, 4.32), "colour DSM not caught"
     assert odm.check_outputs(o, s, 4.32, ["Maximum resolution set to 7.39 cm/pixel"]), "cap not caught"
-    c.remove(pid, t["id"])
-    assert "abc" not in STATE["tasks"]
+    assert [x["id"] for x in c.tasks(pid)] == ["abc"]
+    assert c.remove_and_wait(pid, t["id"], timeout=5, poll=0.05)
+    assert "abc" not in STATE["tasks"] and not c.exists(pid, t["id"]) and c.tasks(pid) == []
     assert STATE["logins"] > 2, "token expiry was never exercised"
     assert odm.options_match(opts, [{"name": "fast-orthophoto", "value": True}])
     print(f"OK ({STATE['logins']} logins incl. re-logins after expiry, {STATE['uploads']} upload batches)")

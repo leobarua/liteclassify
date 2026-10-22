@@ -9,14 +9,15 @@ the next start (WebODM keeps processing either way).
 import json
 import os
 import time
+import urllib.parse
 
 from PySide6.QtCore import QObject, QPointF, QRectF, QSettings, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QFont, QImage, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QDialog, QDoubleSpinBox,
-                               QFileDialog, QFormLayout, QGraphicsScene, QGraphicsView,
-                               QGroupBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-                               QPlainTextEdit, QProgressBar, QPushButton, QRadioButton,
-                               QVBoxLayout, QWidget)
+                               QFileDialog, QFormLayout, QGraphicsItem, QGraphicsScene,
+                               QGraphicsView, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+                               QMessageBox, QPlainTextEdit, QProgressBar, QPushButton,
+                               QRadioButton, QToolButton, QVBoxLayout, QWidget)
 
 import app_info as A
 import obia_odm as odm
@@ -124,7 +125,7 @@ class OdmJobWorker(QObject):
                 if st == odm.FAILED:
                     raise odm.WebODMError(f"WebODM reported a failure: {info.get('last_error') or 'see the log'}")
                 if st == odm.CANCELED:
-                    return self._end_cancelled(already=True)
+                    return self._end_cancelled()
                 self._sleep(POLL_S)
 
             os.makedirs(job["out_dir"], exist_ok=True)
@@ -142,18 +143,26 @@ class OdmJobWorker(QObject):
                 # Keep the task in WebODM so nothing is lost while this is looked into.
                 raise odm.WebODMError("The downloaded files did not pass the checks (the task is kept "
                                       "in WebODM):\n" + "\n".join(problems))
-            c.remove(job["project"], job["task"])
+            self.status.emit("Removing the task from WebODM", 1.0, odm.COMPLETED)
+            if not c.remove_and_wait(job["project"], job["task"]):
+                self.log_lines.emit(["WebODM had not deleted the task after 2 minutes; "
+                                     "Clean Up WebODM… removes it."])
             self.finished.emit(ortho, dsm)
         except Exception as e:
             self.failed.emit(str(e))
 
-    def _end_cancelled(self, already=False):
+    def _end_cancelled(self):
+        """ Removes the task (which also stops it) and waits until WebODM has deleted its
+        files, so a cancelled job leaves nothing on disk. """
+        self.status.emit("Cancelling: removing the task from WebODM", 0.0, 0)
         try:
-            if not already:
-                self.client.cancel(self.job["project"], self.job["task"])
-            self.client.remove(self.job["project"], self.job["task"])
-        except odm.WebODMError:
-            pass
+            gone = self.client.remove_and_wait(self.job["project"], self.job["task"])
+        except odm.WebODMError as e:
+            return self.failed.emit(f"Cancelled, but removing the task from WebODM failed: {e}\n"
+                                    "Clean Up WebODM… removes it.")
+        if not gone:
+            return self.failed.emit("Cancelled, but WebODM had not deleted the task after 2 minutes. "
+                                    "Clean Up WebODM… removes it.")
         self.cancelled.emit()
 
 
@@ -167,19 +176,30 @@ class PhotoMapView(QGraphicsView):
         super().__init__(parent)
         self.setScene(QGraphicsScene(self))
         self.setRenderHint(QPainter.Antialiasing)
-        self.setMinimumHeight(260)
+        self.setMinimumSize(420, 360)
         self.setBackgroundBrush(QColor("#f3f4f1"))
         self.setDragMode(QGraphicsView.NoDrag)
+        # No scrollbars: their appearing on zoom-in resized the view, which refitted it.
+        # Middle-drag pans instead.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setMouseTracking(True)                 # the polygon's next edge follows the cursor
+        self.viewport().setMouseTracking(True)
         self.mode = "rect"
-        self._dots, self._aoi_item, self._draft = [], None, []
-        self._press = None
+        self._dots, self._aoi_item, self._marks, self._draft = [], None, [], []
+        self._press = self._pan = None
         self._r = 1.0
+        self._fit_scale = 1.0
+
+    def _fit(self):
+        self.fitInView(self.sceneRect(), Qt.KeepAspectRatio)
+        self._fit_scale = self.transform().m11()
 
     def set_photos(self, xy, underlay=None):
         """ xy: [(x, y)]; underlay: (QImage, (left, bottom, right, top)) or None. """
         sc = self.scene()
         sc.clear()
-        self._dots, self._aoi_item, self._draft = [], None, []
+        self._dots, self._aoi_item, self._marks, self._draft = [], None, [], []
         if not xy:
             return
         xs, ys = [p[0] for p in xy], [p[1] for p in xy]
@@ -203,7 +223,7 @@ class PhotoMapView(QGraphicsView):
         pad = span * 0.08
         self.setSceneRect(QRectF(min(xs) - pad, -max(ys) - pad, max(xs) - min(xs) + 2 * pad,
                                  max(ys) - min(ys) + 2 * pad))
-        QTimer.singleShot(0, lambda: self.fitInView(self.sceneRect(), Qt.KeepAspectRatio))
+        QTimer.singleShot(0, self._fit)
 
     def set_selected(self, mask):
         on, off = QBrush(QColor("#f65244")), QBrush(QColor("#b9c0bb"))
@@ -215,10 +235,21 @@ class PhotoMapView(QGraphicsView):
         self._show_aoi([])
         self.aoi_changed.emit([])
 
-    def _show_aoi(self, pts, closed=True):
+    def _show_aoi(self, pts, closed=True, corners=None):
+        """ corners: the vertices to mark (default all of pts; while drawing a polygon,
+        the clicked ones but not the cursor). """
         if self._aoi_item is not None:
             self.scene().removeItem(self._aoi_item)
             self._aoi_item = None
+        for m in self._marks:
+            self.scene().removeItem(m)
+        self._marks = []
+        for x, y in (pts if corners is None else corners):
+            m = self.scene().addEllipse(-4, -4, 8, 8, QPen(QColor("#1f6fb2"), 1.5), QBrush(Qt.white))
+            m.setFlag(QGraphicsItem.ItemIgnoresTransformations)   # fixed size on screen
+            m.setPos(x, -y)
+            m.setZValue(2)
+            self._marks.append(m)
         if len(pts) >= 2:
             poly = QPolygonF([QPointF(x, -y) for x, y in pts])
             pen = QPen(QColor("#1f6fb2"), 0)
@@ -239,6 +270,10 @@ class PhotoMapView(QGraphicsView):
         if event.button() == Qt.RightButton:
             self.clear_aoi()
             return
+        if event.button() == Qt.MiddleButton:
+            self._pan = event.position().toPoint()
+            self.viewport().setCursor(Qt.ClosedHandCursor)
+            return
         if event.button() != Qt.LeftButton or not self._dots:
             return super().mousePressEvent(event)
         pt = self._map_pt(event)
@@ -249,14 +284,24 @@ class PhotoMapView(QGraphicsView):
             self._show_aoi(self._draft, closed=False)
 
     def mouseMoveEvent(self, event):
+        if self._pan is not None:
+            p = event.position().toPoint()
+            d, self._pan = p - self._pan, p
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - d.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - d.y())
+            return
         if self.mode == "rect" and self._press is not None:
             (x0, y0), (x1, y1) = self._press, self._map_pt(event)
             self._show_aoi([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])
         elif self.mode == "poly" and self._draft:
-            self._show_aoi(self._draft + [self._map_pt(event)], closed=False)
+            self._show_aoi(self._draft + [self._map_pt(event)], closed=False, corners=self._draft)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MiddleButton and self._pan is not None:
+            self._pan = None
+            self.viewport().unsetCursor()
+            return
         if self.mode == "rect" and self._press is not None and event.button() == Qt.LeftButton:
             (x0, y0), (x1, y1) = self._press, self._map_pt(event)
             self._press = None
@@ -274,14 +319,27 @@ class PhotoMapView(QGraphicsView):
             self.aoi_changed.emit(pts)
 
     def wheelEvent(self, event):
-        f = 1.25 if event.angleDelta().y() > 0 else 0.8
+        """ Zoom under the cursor, from the whole flight (no further out) to 50x. """
+        cur = self.transform().m11()
+        want = cur * (1.25 if event.angleDelta().y() > 0 else 0.8)
+        want = min(max(want, self._fit_scale), 50 * self._fit_scale)
+        if abs(want / cur - 1) < 1e-6:
+            return
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self.scale(f, f)
+        self.scale(want / cur, want / cur)
 
     def resizeEvent(self, event):
+        """ Refit when showing the whole flight; when zoomed in, keep the zoom and only
+        move the zoom-out limit. """
+        at_fit = abs(self.transform().m11() / self._fit_scale - 1) < 1e-3
         super().resizeEvent(event)
-        if self._dots:
-            self.fitInView(self.sceneRect(), Qt.KeepAspectRatio)
+        if not self._dots:
+            return
+        if at_fit:
+            self._fit()
+        else:
+            r, v = self.sceneRect(), self.viewport().rect()
+            self._fit_scale = min(v.width() / r.width(), v.height() / r.height())
 
 
 class OdmWindow(QDialog):
@@ -300,7 +358,12 @@ class OdmWindow(QDialog):
         self.started_at = None
         s = _settings()
 
-        lay = QVBoxLayout(self)
+        outer = QHBoxLayout(self)
+        left = QWidget()
+        left.setMinimumWidth(520)
+        lay = QVBoxLayout(left)
+        lay.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(left, 0)
         intro = QLabel("Processes a folder of drone photos with your WebODM installation and loads the "
                        "orthomosaic and DSM into Lite Classify. WebODM must be installed and running.")
         intro.setWordWrap(True)
@@ -346,9 +409,27 @@ class OdmWindow(QDialog):
         self.summary_label.setWordWrap(True)
         f2.addRow("", self.summary_label)
 
-        area = QWidget()
+        # The area map opens in a panel beside the form (widening the window), not under it;
+        # the arrow after the heading points the way the window grows.
+        area_row = QHBoxLayout()
+        area_title = QLabel("Process only part of the flight (optional)")
+        area_title.setStyleSheet("font-weight: 600;")
+        area_title.mousePressEvent = lambda e: self.area_btn.toggle()
+        self.area_btn = QToolButton()
+        self.area_btn.setCheckable(True)
+        self.area_btn.setArrowType(Qt.RightArrow)
+        self.area_btn.setToolTip("Show the map to choose the photos")
+        self.area_btn.toggled.connect(self._toggle_area)
+        area_row.addWidget(area_title)
+        area_row.addWidget(self.area_btn)
+        area_row.addStretch(1)
+        f2.addRow(area_row)
+        self.selection_label = QLabel("")
+        self.selection_label.setWordWrap(True)
+        f2.addRow("Area:", self.selection_label)
+
+        area = self.area_panel = QGroupBox("Area to process")
         al = QVBoxLayout(area)
-        al.setContentsMargins(0, 0, 0, 0)
         tools = QHBoxLayout()
         self.rect_radio = QRadioButton("Rectangle")
         self.poly_radio = QRadioButton("Polygon")
@@ -364,18 +445,17 @@ class OdmWindow(QDialog):
         self.map_view = PhotoMapView()
         self.map_view.aoi_changed.connect(self._on_aoi)
         all_btn.clicked.connect(self.map_view.clear_aoi)
-        al.addWidget(self.map_view)
-        tip = QLabel("Drag a rectangle, or click polygon corners and double-click to finish. Photos within "
-                     "half a photo footprint of the area are kept so its edges get full overlap; the "
-                     "results are cropped to the area. Right-click clears.")
+        al.addWidget(self.map_view, 1)
+        tip = QLabel("Drag a rectangle, or click polygon corners and double-click to finish. The photos "
+                     "taken inside the area are processed and the results are cropped to it; draw a "
+                     "little beyond what you need, as the edges are seen by fewer photos. Scroll to "
+                     "zoom, middle-drag to pan, right-click clears.")
         tip.setWordWrap(True)
         tip.setStyleSheet("color: #76817b; font-size: 11px;")
         al.addWidget(tip)
-        self.selection_label = QLabel("")
-        al.addWidget(self.selection_label)
-        self.area_section = CollapsibleSection("Process only part of the flight (optional)", area,
-                                               start_collapsed=True)
-        f2.addRow(self.area_section)
+        area.setVisible(False)
+        outer.addWidget(area, 1)
+        self._narrow_geom = None
         self.positions, self.epsg, self.aoi, self.selected = [], None, [], []
         self.quality_combo = QComboBox()
         self.quality_combo.addItems(list(odm.QUALITY_PRESETS))
@@ -390,7 +470,6 @@ class OdmWindow(QDialog):
         self.res_spin.setToolTip("Orthomosaic resolution; the DSM is made at 4x this. Estimated from "
                                  "the photos (flight height and camera).")
         f2.addRow("Resolution:", self.res_spin)
-        self.res_spin.valueChanged.connect(lambda _: self._update_selection())
         out_row = QHBoxLayout()
         self.out_edit = QLineEdit()
         ob = QPushButton("Browse")
@@ -398,11 +477,6 @@ class OdmWindow(QDialog):
         out_row.addWidget(self.out_edit)
         out_row.addWidget(ob)
         f2.addRow("Save results to:", out_row)
-        locked = QLabel("Settings: " + ", ".join(
-            f"{k} {str(v).lower() if isinstance(v, bool) else v}" for k, v in odm.BASE_OPTIONS.items()))
-        locked.setWordWrap(True)
-        locked.setStyleSheet("color: #76817b; font-size: 11px;")
-        f2.addRow("", locked)
         lay.addWidget(box)
 
         # Run
@@ -412,8 +486,12 @@ class OdmWindow(QDialog):
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.clicked.connect(self.cancel)
+        self.clean_btn = QPushButton("Clean Up WebODM…")
+        self.clean_btn.setToolTip("Remove leftover Lite Classify tasks and stale upload files from WebODM")
+        self.clean_btn.clicked.connect(self.clean_up)
         btns.addWidget(self.start_btn)
         btns.addWidget(self.cancel_btn)
+        btns.addWidget(self.clean_btn)
         lay.addLayout(btns)
 
         self.stage_label = QLabel("")
@@ -427,7 +505,7 @@ class OdmWindow(QDialog):
         self.log_view.setMaximumBlockCount(500)
         self.log_view.setFont(QFont("Consolas", 8))
         self.log_view.setMinimumHeight(160)
-        self.log_section = CollapsibleSection("WebODM log", self.log_view, start_collapsed=True)
+        self.log_section = CollapsibleSection("WebODM log", self.log_view, start_collapsed=False)
         lay.addWidget(self.log_section, 1)
 
         self.clock = QTimer(self)
@@ -522,9 +600,31 @@ class OdmWindow(QDialog):
         except Exception:
             return None
 
-    def _footprint(self):
-        s, gsd = self.summary or {}, self.res_spin.value() / 100
-        return (gsd * (s.get("width") or 4000), gsd * (s.get("height") or 3000))
+    def _toggle_area(self, on):
+        """ Show the area map beside the form, widening the window to the right (kept on
+        screen); hiding it puts the window back exactly as it was before. """
+        self.area_btn.setArrowType(Qt.LeftArrow if on else Qt.RightArrow)
+        if on == self.area_panel.isVisible():
+            return
+        if on:
+            self._narrow_geom = self.geometry()
+        self.area_panel.setVisible(on)
+        self.layout().activate()                    # the minimum width follows the panel now
+        if self.isMaximized():
+            return
+        if not on:
+            if self._narrow_geom is not None:
+                self.setGeometry(self._narrow_geom)
+            return
+        g = self._narrow_geom
+        w = g.width() + 560
+        scr = self.screen().availableGeometry() if self.screen() else None
+        if scr is not None:
+            w = min(w, scr.width())
+            x = min(g.x(), scr.right() - w)
+            self.setGeometry(max(x, scr.left()), g.y(), w, g.height())
+        else:
+            self.resize(w, g.height())
 
     def _on_aoi(self, pts):
         self.aoi = pts
@@ -533,12 +633,12 @@ class OdmWindow(QDialog):
     def _update_selection(self):
         if not self.positions:
             return
-        self.selected = (odm.select_photos(self.xy, self.aoi, self._footprint()) if self.aoi
+        self.selected = (odm.select_photos(self.xy, self.aoi) if self.aoi
                          else [True] * len(self.positions))
         self.map_view.set_selected(self.selected)
         n = sum(self.selected)
         size = sum(os.path.getsize(p["path"]) for p, m in zip(self.positions, self.selected) if m)
-        what = "inside the drawn area (plus a footprint around it)" if self.aoi else "the whole flight"
+        what = "inside the drawn area" if self.aoi else "the whole flight"
         self.selection_label.setText(f"{n} of {len(self.positions)} photos selected ({size / 1e9:.1f} GB), "
                                      f"{what}.")
 
@@ -584,10 +684,12 @@ class OdmWindow(QDialog):
         gsd = self.res_spin.value()
         name = os.path.basename(folder.rstrip("/\\"))
         job = {"project": None, "task": None, "out_dir": out_dir, "gsd_cm": gsd,
-               "name": f"{name} (Lite Classify)",
+               "name": f"{name} (Lite Classify)", "folder": folder, "aoi": self.aoi,
                "options": odm.build_options(self.quality_combo.currentText(), gsd, boundary),
                "photos": photos, "started": time.time()}
         self.log_view.clear()
+        self.log_view.appendPlainText(f"{len(photos)} photos. Settings: " + ", ".join(
+            f"{o['name']} {'(drawn area)' if o['name'] == 'boundary' else o['value']}" for o in job["options"]))
         self._run(client, job)
 
     def resume(self):
@@ -605,7 +707,24 @@ class OdmWindow(QDialog):
             self.start_btn.clicked.connect(self._reconnect)
             return
         self.out_edit.setText(job["out_dir"])
+        self._restore_inputs(job)
         self._run(client, job)
+
+    def _restore_inputs(self, job):
+        """ Shows the reattached job's photos and drawn area again (jobs saved before these
+        were kept have neither). """
+        folder = job.get("folder")
+        if not folder or not os.path.isdir(folder) or self.photos_edit.text().strip():
+            return
+        self.photos_edit.setText(folder)
+        self._summarize()
+        if job.get("gsd_cm"):
+            self.res_spin.setValue(job["gsd_cm"])
+        aoi = [tuple(p) for p in job.get("aoi") or []]
+        if aoi and self.positions:
+            self.aoi = aoi
+            self.map_view._show_aoi(aoi)
+            self._update_selection()
 
     def _reconnect(self):
         self.start_btn.setText("Start Processing")
@@ -619,11 +738,12 @@ class OdmWindow(QDialog):
         self.worker = OdmJobWorker(client, job)
         self.worker.moveToThread(self.thread)
         self.thread.started.connect(self.worker.run)
-        self.worker.job_saved.connect(_save_job)
-        self.worker.upload_progress.connect(lambda d, n: self._show("Uploading photos", d / max(n, 1),
-                                                                    f"{d}/{n}"))
-        self.worker.status.connect(lambda st, p, code: self._show(st, p))
-        self.worker.log_lines.connect(lambda lines: self.log_view.appendPlainText("\n".join(lines)))
+        # Methods, not lambdas: a lambda slot runs in the worker's thread and touching widgets
+        # there crashes Qt; a method of this window is queued to the UI thread.
+        self.worker.job_saved.connect(self._on_job_saved)
+        self.worker.upload_progress.connect(self._on_upload_progress)
+        self.worker.status.connect(self._on_status)
+        self.worker.log_lines.connect(self._on_log_lines)
         self.worker.finished.connect(self._on_finished)
         self.worker.failed.connect(self._on_failed)
         self.worker.cancelled.connect(self._on_cancelled)
@@ -636,6 +756,18 @@ class OdmWindow(QDialog):
         self.clock.start(1000)
         self._show("Connecting", 0.0)
         self.thread.start()
+
+    def _on_job_saved(self, job):
+        _save_job(job)
+
+    def _on_upload_progress(self, done, total):
+        self._show("Uploading photos", done / max(total, 1), f"{done}/{total}")
+
+    def _on_status(self, stage, frac, code):
+        self._show(stage, frac)
+
+    def _on_log_lines(self, lines):
+        self.log_view.appendPlainText("\n".join(lines))
 
     def _show(self, stage, frac, extra=""):
         self._stage, self._frac = stage, frac
@@ -661,6 +793,73 @@ class OdmWindow(QDialog):
         self.cancel_btn.setEnabled(False)
         self.cancel_btn.setText("Cancelling…")
         self.worker.request_cancel()
+
+    def clean_up(self):
+        """ Removes what Lite Classify jobs can leave in WebODM: tasks in the Lite Classify
+        project (except the running job's) and, for a WebODM on this PC, upload temp files
+        it did not delete. Lists everything and asks first. """
+        try:
+            c = self._client()
+        except odm.WebODMError as e:
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        running = (self.worker.job if self.worker is not None else saved_job()) or {}
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            pid = c.find_project()
+            tasks = [t for t in (c.tasks(pid) if pid else []) if t.get("id") != running.get("task")]
+            local = urllib.parse.urlparse(c.url).hostname in ("127.0.0.1", "localhost")
+            app_dir = odm.local_webodm_app_dir() if local else None
+            stale = odm.stale_upload_files(app_dir) if app_dir else []
+        except odm.WebODMError as e:
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        if not tasks and not stale:
+            QMessageBox.information(self, "Clean Up WebODM", "Nothing to clean up."
+                                    + ("" if app_dir or not local else "\n(WebODM's own folder was "
+                                       "not found, so its upload files were not checked.)"))
+            return
+        lines = []
+        if tasks:
+            lines.append(f"Remove {len(tasks)} task(s) from the \"{odm.PROJECT_NAME}\" project in WebODM:")
+            for t in tasks[:12]:
+                size = f", {t['size'] / 1024:.1f} GB" if t.get("size") else ""
+                lines.append(f"  • {t.get('name') or t['id']} "
+                             f"({odm.STATUS_NAMES.get(t.get('status'), 'Waiting')}{size})")
+            if len(tasks) > 12:
+                lines.append(f"  • … and {len(tasks) - 12} more")
+        if stale:
+            gb = sum(s for _, s in stale) / 1e9
+            lines.append(f"Delete {len(stale)} leftover upload file(s), {gb:.2f} GB, from "
+                         f"{os.path.join(app_dir, 'data', 'media', 'tmp')} and NodeODX's tmp folder.")
+        if QMessageBox.question(self, "Clean Up WebODM", "\n".join(lines) + "\n\nThis cannot be undone.") \
+                != QMessageBox.Yes:
+            return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            for t in tasks:
+                c.remove(pid, t["id"])
+            left, end = list(tasks), time.time() + 120
+            while left and time.time() < end:
+                QApplication.processEvents()
+                time.sleep(0.5)
+                left = [t for t in left if c.exists(pid, t["id"])]
+            freed, failed = odm.delete_paths(stale)
+        except odm.WebODMError as e:
+            QMessageBox.warning(self, "WebODM", str(e))
+            return
+        finally:
+            QApplication.restoreOverrideCursor()
+        msg = []
+        if tasks:
+            msg.append(f"Removed {len(tasks) - len(left)} of {len(tasks)} task(s)."
+                       + (" WebODM is still deleting the rest." if left else ""))
+        if stale:
+            msg.append(f"Deleted {freed / 1e9:.2f} GB of upload files."
+                       + (f" {len(failed)} could not be deleted (in use)." if failed else ""))
+        QMessageBox.information(self, "Clean Up WebODM", "\n".join(msg))
 
     def _end(self, text):
         self.clock.stop()
