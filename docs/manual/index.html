@@ -47,7 +47,7 @@
       </ol>
     </li>
   </ol>
-  <p class="toc-meta">Version 1.0 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: a 55&nbsp;ha drone survey in Bay, Laguna, mapped into seven classes.</p>
+  <p class="toc-meta">Version 1.1 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: a 55&nbsp;ha drone survey in Bay, Laguna, mapped into seven classes.</p>
 </aside>
 
 <main>
@@ -163,6 +163,7 @@
     <tr><td>Operating system</td><td>Windows 10 or 11, 64-bit</td><td>On a fresh machine you may need the Microsoft Visual C++ Redistributable (x64).</td></tr>
     <tr><td>Graphics card</td><td>Optional</td><td>An NVIDIA GPU with CUDA speeds up segmentation (about 10× in our tests) and the DINOv2 appearance features.</td></tr>
     <tr><td>Memory (RAM)</td><td>16 GB or more recommended</td><td>Lite Classify checks memory before loading, resampling and segmenting, and suggests a coarser resolution or tiling when a step would not fit. Very large mosaics are read at reduced resolution on load.</td></tr>
+    <tr><td>WebODM</td><td>Optional</td><td>Only to make orthomosaics from drone photos inside Lite Classify (<a href="workflow.html#webodm">Part C, 6.1</a>). Installed and run separately; Lite Classify includes no photogrammetry.</td></tr>
     <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it. The worked example's workspace is about 0.9 GB.</td></tr>
   </tbody>
 </table></div>
@@ -201,7 +202,8 @@
     <tr><td>Load Workspace…</td><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Pick a <code>_workspace</code> folder and reopen everything in it.</td></tr>
     <tr><td>Save Workspace</td><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Save the whole session beside the orthomosaic.</td></tr>
     <tr><td>Save Workspace As…</td><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>Copy the orthomosaic, DSM and workspace to a new folder and carry on from the copies.</td></tr>
-    <tr><td rowspan="3">Import</td><td>Orthomosaic…</td><td></td><td>Same as Browse on Tab 1.</td></tr>
+    <tr><td rowspan="4">Import</td><td>Orthomosaic from Drone Photos (WebODM)…</td><td></td><td>Have your WebODM make the orthomosaic and DSM from a folder of drone photos, then load them (<a href="workflow.html#webodm">Part C, 6.1</a>).</td></tr>
+    <tr><td>Orthomosaic…</td><td></td><td>Same as Browse on Tab 1.</td></tr>
     <tr><td>DSM…</td><td></td><td>Attach a surface model.</td></tr>
     <tr><td>Ground Truth CSV…</td><td></td><td>Bring in field points for Tab 4.</td></tr>
     <tr><td>About</td><td>Manual</td><td></td><td>Opens this manual.</td></tr>
@@ -211,7 +213,7 @@
 
 <h3 id="tour-tabs">The four tabs</h3>
 <div class="cards">
-  <div class="card"><span class="k">Tab 1</span><h3>Load, View &amp; Segment</h3><p>Orthomosaic and DSM paths, resampling, colour correction, the SLIC settings (with <em>Colour/texture at</em> for measuring finer than the segmentation grid), the engine, Run Segmentation, and boundary and elevation overlays.</p></div>
+  <div class="card"><span class="k">Tab 1</span><h3>Load, View &amp; Segment</h3><p>Orthomosaic and DSM paths (or a link to make them from drone photos with WebODM), resampling, colour correction, the SLIC settings (with <em>Colour/texture at</em> for measuring finer than the segmentation grid), the engine, Run Segmentation, and boundary and elevation overlays.</p></div>
   <div class="card"><span class="k">Tab 2</span><h3>Discover Classes</h3><p>Find Groups, a list of group cards, a scrolling gallery of the selected group's tiles, naming, merge, split, ignore and find-similar tools, a group overlay on the map, and Send Named Groups to Classification.</p></div>
   <div class="card"><span class="k">Tab 3</span><h3>Classification</h3><p>Class list, the views (Blend, Segmented, Raw/Classified), selection, grow and merge tools, Check Class Separability, What to Label Next, Train and Classify, the minimum mapping unit, and export.</p></div>
   <div class="card"><span class="k">Tab 4</span><h3>Accuracy Assessment</h3><p>Reference source, sampling design (simple random or stratified by map class), the point list and assignment tools, Run Accuracy Assessment, and the Iterations list of earlier runs.</p></div>
