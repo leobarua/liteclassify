@@ -1665,6 +1665,7 @@ class ObiaEngine:
     DSM_FEATURES = ['dsm_mean', 'dsm_std', 'slope_mean', 'dsm_rel_neighbors', 'hag_mean']
     DEEP_PREFIX = 'deep_'
     use_deep_features = False      # classifier also uses the deep_* columns (see add_deep_columns)
+    deep_columns_backbone = None   # backbone the deep_* columns came from (set by the app)
 
     def active_feature_columns(self, include_deep=True):
         """ The features the Random Forest uses: the 19 base features; with a DSM the
@@ -1744,7 +1745,7 @@ class ObiaEngine:
         return self.features_df
 
     def add_deep_columns(self, deep, n_pc=10):
-        """ deep_* columns in features_df from cached DINOv2 features (obia_discover): the
+        """ deep_* columns in features_df from cached deep features (obia_discover): the
         first n_pc principal components of each patch size, fitted over all segments.
         Segments without deep features get 0. """
         from sklearn.decomposition import PCA

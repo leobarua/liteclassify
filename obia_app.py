@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy
 )
 from PySide6.QtGui import QImage, QColor, QPainter, QTextCursor, QIcon, QPixmap, QShortcut, QKeySequence, QAction, QDesktopServices
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QTimer, QSettings
 
 from skimage.color import rgb2hsv, hsv2rgb
 from skimage.segmentation import find_boundaries
@@ -209,15 +209,18 @@ class SegmentationWorker(QObject):
 
 
 class DeepFeatureWorker(QObject):
-    """ Computes DINOv2 deep features for every segment off the UI thread (Discover tab). """
+    """ Computes deep features (DINOv2, or the user's DINOv3) for every segment off the UI
+    thread (Discover tab). """
     finished = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int)
     cancelled = Signal()
 
-    def __init__(self, engine):
+    def __init__(self, engine, backbone=od.DEFAULT_BACKBONE, weights_path=None):
         super().__init__()
         self.engine = engine
+        self.backbone = backbone
+        self.weights_path = weights_path
         self.cancel_requested = False
 
     def run(self):
@@ -226,7 +229,8 @@ class DeepFeatureWorker(QObject):
             deep = od.compute_deep_features(e.original_ortho_data, e.segmented_image, e.valid_mask,
                                             e.effective_pixel_size or 0.1,
                                             progress=lambda d, n: self.progress.emit(d, n),
-                                            cancelled=lambda: self.cancel_requested)
+                                            cancelled=lambda: self.cancel_requested,
+                                            backbone=self.backbone, weights_path=self.weights_path)
             if deep is None:
                 self.cancelled.emit()
             else:
@@ -1870,6 +1874,21 @@ class ObiaApp(QMainWindow):
         self.disc_use_feat_check = QCheckBox("Colour, texture, shape && height (classifier features)")
         self.disc_use_feat_check.setChecked(True)
         fg.addWidget(self.disc_use_deep_check)
+        bb_row = QHBoxLayout()
+        bb_row.setContentsMargins(22, 0, 0, 0)
+        bb_row.addWidget(QLabel("Backbone:"))
+        self.disc_backbone_combo = QComboBox()
+        for key, label in od.BACKBONES.items():
+            self.disc_backbone_combo.addItem(label, key)
+        self.disc_backbone_combo.setToolTip(
+            "The model that turns each patch into appearance features. DINOv2 comes with Lite Classify. "
+            "DINOv3 is experimental and not included: you download it from Meta yourself, under Meta's "
+            "DINOv3 License, and choose the file here.")
+        self.disc_backbone_combo.setEnabled(od.torch is not None)
+        bb_row.addWidget(self.disc_backbone_combo, 1)
+        fg.addLayout(bb_row)
+        self._set_backbone_combo(self._settings().value("discover/backbone", od.DEFAULT_BACKBONE))
+        self.disc_backbone_combo.currentIndexChanged.connect(self._on_backbone_changed)
         fg.addWidget(self.disc_use_feat_check)
         n_row = QHBoxLayout()
         n_row.addWidget(QLabel("Number of groups:"))
@@ -2169,6 +2188,107 @@ class ObiaApp(QMainWindow):
                 self._strip_cache = {}
                 self.refresh_discover_list()
 
+    # --- Discover: backbone (DINOv2 bundled, DINOv3 experimental from the user's own file) ---
+    @staticmethod
+    def _settings():
+        return QSettings(app_info.APP_AUTHOR, app_info.APP_NAME)
+
+    def _backbone(self):
+        return self.disc_backbone_combo.currentData() or od.DEFAULT_BACKBONE
+
+    def _set_backbone_combo(self, key):
+        """ Selects a backbone without the first-use questions (start-up, workspace load). """
+        i = self.disc_backbone_combo.findData(key)
+        self.disc_backbone_combo.blockSignals(True)
+        self.disc_backbone_combo.setCurrentIndex(i if i >= 0 else 0)
+        self.disc_backbone_combo.blockSignals(False)
+        self._backbone_prev = self._backbone()
+        self.disc_use_deep_check.setText(f"Appearance (deep features, {od.backbone_short(self._backbone())})")
+
+    def _on_backbone_changed(self, _index):
+        key = self._backbone()
+        if od.is_dinov3(key):
+            got = self._dinov3_weights(key)
+            if got is None:
+                self._set_backbone_combo(getattr(self, "_backbone_prev", od.DEFAULT_BACKBONE))
+                return
+            key = got[0]
+        self._set_backbone_combo(key)
+        self._settings().setValue("discover/backbone", key)
+        print(f"Discover: appearance backbone set to {od.backbone_label(key)}.")
+        if self.deep is not None and self.deep.get("backbone", od.DEFAULT_BACKBONE) != key:
+            print(f" -> This workspace's deep features were made with {od.backbone_short(self.deep.get('backbone'))}; "
+                  f"Find Groups will recompute them with {od.backbone_short(key)}.")
+
+    def _dinov3_weights(self, key, pick=False):
+        """ (backbone key, path) of the user's DINOv3 file for `key`, asking for it (with the
+        licence notice) when it isn't set, has moved, or pick=True. None if the user cancels.
+        The file is only read where it is: never copied, never downloaded. """
+        s = self._settings()
+        path = s.value(f"discover/weights/{key}", "")
+        if path and not pick:
+            try:
+                if od.check_dinov3_weights(path) == key:
+                    return key, path
+            except ValueError as e:
+                print(f"Discover: the saved DINOv3 file can't be used ({e}).")
+        box = QMessageBox(self)
+        box.setWindowTitle("DINOv3 (experimental)")
+        box.setIcon(QMessageBox.Information)
+        box.setTextFormat(Qt.RichText)
+        box.setText(f"<b>{od.backbone_short(key)} is not part of Lite Classify.</b> You use it with your own "
+                    f"download from Meta, under Meta's "
+                    f"<a href='{od.DINOV3_LICENSE_URL}'>DINOv3 License</a>, which restricts some uses.")
+        box.setInformativeText(
+            f"Request access and download the backbone file from Meta (see <a href='{od.DINOV3_DOWNLOAD_URL}'>"
+            "the DINOv3 page</a>): dinov3_vits16_pretrain_lvd1689m-….pth (ViT-S/16) or "
+            "dinov3_vits16plus_pretrain_lvd1689m-….pth (ViT-S+/16). Lite Classify reads the file where it is; "
+            "it is not copied into workspaces.<br><br>Appearance features from DINOv3 differ from DINOv2's: "
+            "switching recomputes them, and groups and classifiers made with the other backbone are redone.")
+        choose = box.addButton("Choose File…", QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(choose)
+        box.exec()
+        if box.clickedButton() is not choose:
+            return None
+        start = os.path.dirname(path) if path else ""
+        while True:
+            fn, _ = QFileDialog.getOpenFileName(self, f"Choose the {od.backbone_short(key)} weights file", start,
+                                                "DINOv3 weights (*.pth);;All files (*)")
+            if not fn:
+                return None
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                got = od.check_dinov3_weights(fn)
+                err = None
+            except ValueError as e:
+                got, err = None, str(e)
+            finally:
+                QApplication.restoreOverrideCursor()
+            if err is None:
+                break
+            QMessageBox.warning(self, "DINOv3 (experimental)", err)
+            start = os.path.dirname(fn)
+        if got != key:
+            print(f"Discover: the chosen file is {od.backbone_short(got)}; using that.")
+        s.setValue(f"discover/weights/{got}", fn)
+        print(f"Discover: {od.backbone_short(got)} weights: {fn} (SHA-256 {od.file_sha256(fn)[:12]}…).")
+        return got, fn
+
+    def _drop_deep_dependents(self):
+        """ The classifier's deep_* columns and any classifier trained on them belong to the
+        old deep features: drop them so nothing mixes two backbones. """
+        cols = [c for c in self.engine.features_df.columns if c.startswith(self.engine.DEEP_PREFIX)] \
+            if self.engine.features_df is not None else []
+        if cols:
+            self.engine.features_df = self.engine.features_df.drop(columns=cols)
+        self.engine.deep_columns_backbone = None
+        if self.classifier is not None and any(c.startswith(self.engine.DEEP_PREFIX)
+                                               for c in (getattr(self, "classifier_features", None) or [])):
+            self.classifier = None
+            self.classifier_features = None
+            print(" -> The classifier used the old deep features; train it again.")
+
     # --- Discover: finding groups ---
     def discover_find_groups(self):
         if self.engine.segmented_image is None or self.engine.features_df is None:
@@ -2184,6 +2304,31 @@ class ObiaApp(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return
+        key = self._backbone()
+        if self.disc_use_deep_check.isChecked() and self.deep is not None \
+                and self.deep.get("backbone", od.DEFAULT_BACKBONE) != key:
+            old = od.backbone_short(self.deep.get("backbone"))
+            box = QMessageBox(self)
+            box.setWindowTitle("Change backbone")
+            box.setIcon(QMessageBox.Question)
+            box.setText(f"The appearance features here were made with {old}. Using {od.backbone_short(key)} "
+                        f"recomputes them for every segment.")
+            box.setInformativeText("The groups are rebuilt, and a classifier trained with deep features must be "
+                                   "trained again. Results from the two backbones should not be compared "
+                                   "or combined without saying so.")
+            go = box.addButton(f"Recompute with {od.backbone_short(key)}", QMessageBox.AcceptRole)
+            keep = box.addButton(f"Keep {old}", QMessageBox.ActionRole)
+            box.addButton(QMessageBox.Cancel)
+            box.setDefaultButton(go)
+            box.exec()
+            if box.clickedButton() is keep:
+                self._set_backbone_combo(self.deep.get("backbone", od.DEFAULT_BACKBONE))
+                self._settings().setValue("discover/backbone", self._backbone())
+            elif box.clickedButton() is go:
+                self.deep = None
+                self._drop_deep_dependents()
+            else:
+                return
         if self.disc_use_deep_check.isChecked() and self._deep_for_current() is None:
             if not self._confirm_cpu_deep_time():
                 return
@@ -2193,7 +2338,8 @@ class ObiaApp(QMainWindow):
         self._discover_group_now()
 
     # Seconds per segment for DINOv2 (two patches each), measured on the v1.0 builds:
-    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s.
+    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s. DINOv3 ViT-S/16 uses fewer tokens at
+    # 224 px (196 vs 256), so the same figure is a safe estimate for it.
     DEEP_S_PER_SEGMENT_CPU = 0.11
 
     def _confirm_cpu_deep_time(self):
@@ -2209,7 +2355,7 @@ class ObiaApp(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle("Find Groups on the CPU")
         box.setIcon(QMessageBox.Information)
-        box.setText(f"Computing the appearance features (DINOv2) for {n:,} segments on the CPU will take "
+        box.setText(f"Computing the appearance features ({od.backbone_short(self._backbone())}) for {n:,} segments on the CPU will take "
                     f"about {self._fmt_duration(est)}.")
         box.setInformativeText("It is done once per segmentation and saved with the workspace. With an NVIDIA "
                                "GPU (GPU edition) it takes a few minutes. You can also group on colour, texture, "
@@ -2237,13 +2383,23 @@ class ObiaApp(QMainWindow):
         return f"{m} min" if m < 90 else f"{m // 60} h {m % 60:02d} min"
 
     def _start_deep_features(self):
+        key, wpath = self._backbone(), None
+        if od.is_dinov3(key):
+            got = self._dinov3_weights(key)
+            if got is None:
+                self.disc_status_label.setText("No DINOv3 file chosen. Choose DINOv2 as the backbone, "
+                                               "or press Find Groups and choose the file.")
+                return
+            key, wpath = got
+            self._set_backbone_combo(key)
         self.disc_find_btn.setEnabled(False)
         self.disc_find_btn.setText("Computing deep features…")
         n = len(self._segment_index()[0])
         self._deep_t0 = time.time()
-        print(f"Computing deep appearance features for {n} segments (DINOv2, {', '.join(f'{int(m)} m' for m in od.PATCH_SIZES_M)} patches)...")
+        print(f"Computing deep appearance features for {n} segments ({od.backbone_label(key)}, "
+              f"{', '.join(f'{int(m)} m' for m in od.PATCH_SIZES_M)} patches)...")
         self.deep_thread = QThread()
-        self.deep_worker = DeepFeatureWorker(self.engine)
+        self.deep_worker = DeepFeatureWorker(self.engine, key, wpath)
         self.deep_worker.moveToThread(self.deep_thread)
         self.deep_thread.started.connect(self.deep_worker.run)
         self.deep_worker.progress.connect(self._on_deep_progress)
@@ -2288,7 +2444,9 @@ class ObiaApp(QMainWindow):
     def _on_deep_finished(self, deep):
         self._deep_controls_idle()
         self.deep = deep
-        print(f" -> Deep features done on {deep['device'].upper()} in {deep['seconds']:.0f} s.")
+        self._drop_deep_dependents()
+        print(f" -> Deep features ({od.backbone_short(deep.get('backbone'))}) done on {deep['device'].upper()} "
+              f"in {deep['seconds']:.0f} s.")
         if self.workspace_dir:
             try:
                 self._ensure_workspace_dir()
@@ -2324,6 +2482,8 @@ class ObiaApp(QMainWindow):
         exclude = edge if self.disc_edge_check.isChecked() else None
         settings = {"use_deep": use_deep, "use_features": use_feat, "n_groups": n,
                     "exclude_edge": bool(exclude is not None), "fingerprint": fp}
+        if use_deep:
+            settings["backbone"] = deep.get("backbone", od.DEFAULT_BACKBONE)
         print(f"Grouping {len(ids):,} segments into {n} groups...")
         QApplication.processEvents()
         self.groups = od.GroupModel.find(ids, X, n, exclude=exclude, settings=settings)
@@ -2331,7 +2491,8 @@ class ObiaApp(QMainWindow):
         self._strip_cache = {}
         self.disc_multi = []
         left_out = int((self.groups.labels == "").sum())
-        basis = " + ".join(b for b, on in (("deep features", use_deep), ("classifier features", use_feat)) if on)
+        deep_name = f"deep features ({od.backbone_short(deep.get('backbone'))})" if use_deep else ""
+        basis = " + ".join(b for b, on in ((deep_name, use_deep), ("classifier features", use_feat)) if on)
         self.disc_status_label.setText(f"{len(ids):,} segments · {len(self.groups.groups)} groups · {basis}"
                                        + (f" · {left_out} edge segments left out" if left_out else ""))
         sugg = self.groups.merge_suggestions(3)
@@ -3046,7 +3207,14 @@ class ObiaApp(QMainWindow):
         if os.path.exists(dpath):
             try:
                 self.deep = od.load_deep_features(dpath)
-                print(" -> Deep features restored from the workspace cache.")
+                bb = self.deep.get("backbone", od.DEFAULT_BACKBONE)
+                print(f" -> Deep features ({od.backbone_label(bb)}) restored from the workspace cache.")
+                if bb != self._backbone():
+                    # follow the workspace: switching back is a choice, with its recompute prompt
+                    self._set_backbone_combo(bb)
+                    if od.is_dinov3(bb):
+                        print("    Recomputing them would need your DINOv3 file; grouping and the classifier "
+                              "use the cached features as they are.")
             except Exception as e:
                 print(f" -> Deep feature cache unreadable ({e}); it will be recomputed if needed.")
         if os.path.exists(gpath):
@@ -3078,6 +3246,10 @@ class ObiaApp(QMainWindow):
             deep = self._deep_for_current() if st.get("use_deep") else None
             if st.get("use_deep") and deep is None:
                 print(" -> Saved groups need deep features that are missing; press Find Groups to rebuild.")
+                return False
+            if deep is not None and st.get("backbone", od.DEFAULT_BACKBONE) != deep.get("backbone", od.DEFAULT_BACKBONE):
+                print(f" -> Saved groups were made with {od.backbone_short(st.get('backbone'))} features, but the "
+                      f"cached features are {od.backbone_short(deep.get('backbone'))}; press Find Groups to rebuild.")
                 return False
             ids = np.array([s for s in self._segment_index()[0] if s in self.engine.features_df.index])
             X = od.build_space(ids, self.engine.features_df, self.engine.active_feature_columns(include_deep=False),
@@ -3309,7 +3481,7 @@ class ObiaApp(QMainWindow):
         train_outer.addLayout(helper_row)
         self.use_deep_check = QCheckBox("Use deep appearance features")
         self.use_deep_check.setToolTip(
-            "Also give the classifier 20 appearance features from the DINOv2 deep features (10 principal "
+            "Also give the classifier 20 appearance features from the deep features (10 principal "
             "components each of the 5 m and 10 m patches around every segment). Uses the deep features "
             "computed in Discover Classes (Find Groups with Appearance ticked).")
         train_outer.addWidget(self.use_deep_check)
@@ -4463,6 +4635,7 @@ class ObiaApp(QMainWindow):
             "lut": self._class_map_lut(),
             "sieve": int(self.gen_spinbox.value()),
             "use_deep": bool(self.use_deep_check.isChecked()),
+            "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
             "seg_shape": list(self.engine.segmented_image.shape),
             "image": image,
         }
@@ -5401,10 +5574,14 @@ class ObiaApp(QMainWindow):
                   "'Use deep appearance features').")
             return False
         have = [c for c in self.engine.features_df.columns if c.startswith(self.engine.DEEP_PREFIX)]
-        if not have or self.engine.features_df[have].abs().sum().sum() == 0:
-            print("Adding deep appearance features (PCA of DINOv2 5 m and 10 m patches) to the classifier features...")
+        bb = deep.get("backbone", od.DEFAULT_BACKBONE)
+        if not have or self.engine.features_df[have].abs().sum().sum() == 0 \
+                or getattr(self.engine, "deep_columns_backbone", None) not in (None, bb):
+            print(f"Adding deep appearance features (PCA of {od.backbone_short(bb)} 5 m and 10 m patches) "
+                  f"to the classifier features...")
             QApplication.processEvents()
             self.engine.add_deep_columns(deep)
+            self.engine.deep_columns_backbone = bb
         self.engine.use_deep_features = True
         return True
 
@@ -5800,6 +5977,7 @@ class ObiaApp(QMainWindow):
                 "accuracy_min_per_class": self.acc_min_per_class_spinbox.value(),
                 "accuracy_strata": self.engine.accuracy_strata,
                 "use_deep_in_classifier": self.use_deep_check.isChecked(),
+                "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
                 "classes": {}
             }
             for class_name, data in self.classes.items():

@@ -40,6 +40,15 @@ def prune_bundle(app_dir):
     print(f" -> Pruned {freed / 1e6:.0f} MB of build-only PyTorch files (.lib, include/).")
 
 
+def find_dinov3_files(app_dir):
+    """ Any DINOv3 file (Meta's weights, under Meta's DINOv3 License) inside a folder: these
+    must never be part of a build or release. Users bring their own file. """
+    hits = []
+    for dp, _, files in os.walk(app_dir):
+        hits += [os.path.join(dp, f) for f in files if "dinov3" in f.lower() and not f.lower().endswith((".py", ".pyc"))]
+    return hits
+
+
 def build_application():
     print("==============================================================")
     print("              LITE CLASSIFY EXECUTABLE BUILDER                ")
@@ -78,7 +87,9 @@ def build_application():
         "--noconfirm",                 # Overwrite existing directories automatically
         f"--distpath={DIST_DIR}",
         f"--workpath={WORK_DIR}",
-        "--exclude-module=torchvision",   # not used by the app
+        # torchvision is needed by timm (the experimental DINOv3 backbone's model code).
+        # huggingface_hub is left out on purpose: the app never downloads DINOv3 weights.
+        "--exclude-module=huggingface_hub",
 
         # UPX compression is a well-documented source of corrupted/AV-flagged DLLs for
         # large native-heavy stacks like PyTorch + GDAL -- it "works on the dev machine"
@@ -100,6 +111,7 @@ def build_application():
         "--hidden-import=sklearn.ensemble",
         "--hidden-import=sklearn.tree",
         "--hidden-import=torch",
+        "--hidden-import=timm.models.eva",
         "--hidden-import=pyogrio._geometry",
         "--hidden-import=pyogrio._io",
         "--hidden-import=pyogrio._err",
@@ -154,6 +166,11 @@ def build_application():
     if os.path.exists(os.path.join("branding", "splash_bg.png")):
         pyinstaller_args.append("--add-data=branding/splash_bg.png;.")
     pyinstaller_args.append("--add-data=third_party;third_party")
+    bad = find_dinov3_files("models") + find_dinov3_files("third_party")
+    if bad:
+        print("[BUILD ERROR] DINOv3 files must not be bundled (Meta's DINOv3 License; users bring their "
+              "own copy). Move these out of the build folders:\n  " + "\n  ".join(bad))
+        sys.exit(1)
     weights = os.path.join("models", "dinov2_vits14_pretrain.pth")
     if not os.path.exists(weights):
         try:
@@ -180,6 +197,11 @@ def build_application():
     try:
         PyInstaller.__main__.run(pyinstaller_args)
         prune_bundle(os.path.join(DIST_DIR, APP_NAME))
+        bad = find_dinov3_files(os.path.join(DIST_DIR, APP_NAME))
+        if bad:
+            print("\n[BUILD ERROR] DINOv3 files ended up in the build; they must not be distributed:\n  "
+                  + "\n  ".join(bad))
+            sys.exit(1)
 
         exe_path = os.path.join(DIST_DIR, APP_NAME, f"{APP_NAME}.exe")
         if not os.path.exists(exe_path):

@@ -50,6 +50,14 @@ inside a closed-source product). See `COMMERCIAL-LICENSING.md`.
 | --- | --- | --- |
 | DINOv2 ViT backbone code (Meta Platforms, Inc.) | `third_party/dinov2/` | Apache License 2.0 (`third_party/dinov2/LICENSE`) |
 | DINOv2 ViT-S/14 pretrained weights | bundled in builds as `models/dinov2_vits14_pretrain.pth` | Apache License 2.0 |
+| timm (PyTorch Image Models, Ross Wightman) — model code for the optional DINOv3 backbone | Python dependency, bundled in builds | Apache License 2.0 |
+
+**DINOv3 is not part of Lite Classify.** Its weights and Meta's DINOv3 code are under Meta's
+DINOv3 License, which is not an open-source licence, and are never included in this
+repository, the installers or the releases (`build_exe.py` refuses to build if a DINOv3 file
+is present). The experimental DINOv3 backbone in Discover Classes reads a weights file that
+each user downloads from Meta and uses under Meta's terms; Lite Classify neither downloads nor
+copies it. The DINOv3 model code used is timm's own implementation (Apache 2.0).
 
 Lite Classify includes no photogrammetry software. Import > Orthomosaic from Drone Photos talks
 to a WebODM installation (AGPL-3.0, OpenDroneMap) that the user installs and runs separately,
