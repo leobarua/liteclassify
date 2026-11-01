@@ -2,7 +2,7 @@
 build_exe.py all read from here. No heavy imports -- the launcher imports this first."""
 
 APP_NAME = "Lite Classify"
-APP_VERSION = "1.2"
+APP_VERSION = "1.1"
 APP_TAGLINE = "Object Based Image Classification"
 APP_AUTHOR = "LeoBar"
 APP_ID = "LeoBar.LiteClassify"          # Windows AppUserModelID: groups the taskbar icon
