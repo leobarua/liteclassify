@@ -1777,8 +1777,18 @@ class ObiaEngine:
           'jm_feature'   {(a, b): Series of single-feature JM, highest first}
           'low_n'        classes with fewer samples than features (estimate less reliable)
 
+        'jm' is cross-validated (since v1.2): for each pair, k folds (k = min(5, smaller
+        class size)); on the training folds a shrinkage LDA direction separating the two
+        classes is fitted, the held-out samples are projected onto it, and JM is computed
+        from the held-out scores of all folds. The classic full-dimensional JM
+        ('jm_classic') saturates at 2 with many features and few samples (a class split
+        randomly against itself scores up to ~1.97 with 44 features); the cross-validated
+        score stays near 0 for such a split and only rewards separation that holds on
+        samples the direction wasn't fitted to.
+
         JM = 2 (1 - exp(-B)), B the Bhattacharyya distance between two Gaussians fitted to
-        each class. Features are standardised by the pooled training spread so none
+        each class (to the 1-D held-out scores for 'jm', to the full feature space for
+        'jm_classic'). Features are standardised by the pooled training spread so none
         dominates by scale, and each class covariance is a Ledoit-Wolf shrinkage estimate,
         which stays stable when a class has fewer samples than there are features.
         Common reading: >= 1.9 well separated, 1.0-1.9 partly separable, < 1.0 poorly
@@ -1795,6 +1805,7 @@ class ObiaEngine:
         std = pd.DataFrame({c: data[c].std(0) for c in classes}, index=features).T
         result = dict(classes=classes, skipped=skipped, n={c: n[c] for c in classes}, features=features,
                       mean=mean, std=std, jm=pd.DataFrame(index=classes, columns=classes, dtype=float),
+                      jm_classic=pd.DataFrame(index=classes, columns=classes, dtype=float),
                       jm_feature={}, low_n=[c for c in classes if n[c] < len(features)])
         if len(classes) < 2:
             return result
@@ -1810,8 +1821,29 @@ class ObiaEngine:
         def jm_from_b(b):
             return 2.0 * (1.0 - np.exp(-b))
 
+        def b_1d(sa, sb):
+            va, vb = sa.var() + 1e-9, sb.var() + 1e-9
+            v = (va + vb) / 2.0
+            return (sa.mean() - sb.mean()) ** 2 / (8.0 * v) + 0.5 * np.log(v / np.sqrt(va * vb))
+
+        def cv_jm(xa, xb):
+            from sklearn.model_selection import StratifiedKFold
+            X = np.vstack([xa, xb])
+            y = np.r_[np.zeros(len(xa), int), np.ones(len(xb), int)]
+            k = min(5, len(xa), len(xb))
+            score = np.empty(len(y))
+            for tr, te in StratifiedKFold(k, shuffle=True, random_state=0).split(X, y):
+                Xa, Xb = X[tr][y[tr] == 0], X[tr][y[tr] == 1]
+                centred = np.vstack([Xa - Xa.mean(0), Xb - Xb.mean(0)])
+                sw = LedoitWolf().fit(centred).covariance_ + 1e-6 * np.eye(X.shape[1])
+                w = np.linalg.solve(sw, Xa.mean(0) - Xb.mean(0))
+                sc = np.sqrt(w @ sw @ w)           # unit within-class spread, so folds are comparable
+                score[te] = X[te] @ (w / sc if sc > 0 else w)
+            return jm_from_b(b_1d(score[y == 0], score[y == 1]))
+
         for i, a in enumerate(classes):
             result['jm'].loc[a, a] = np.nan
+            result['jm_classic'].loc[a, a] = np.nan
             for b in classes[i + 1:]:
                 d = mu[a] - mu[b]
                 s = (cov[a] + cov[b]) / 2.0
@@ -1819,7 +1851,8 @@ class ObiaEngine:
                 _, lda = np.linalg.slogdet(cov[a])
                 _, ldb = np.linalg.slogdet(cov[b])
                 bh = d @ np.linalg.solve(s, d) / 8.0 + 0.5 * (ld - 0.5 * (lda + ldb))
-                result['jm'].loc[a, b] = result['jm'].loc[b, a] = jm_from_b(bh)
+                result['jm_classic'].loc[a, b] = result['jm_classic'].loc[b, a] = jm_from_b(bh)
+                result['jm'].loc[a, b] = result['jm'].loc[b, a] = cv_jm(z[a], z[b])
                 # Single-feature JM: which features on their own pull this pair apart.
                 vs = (var[a] + var[b]) / 2.0
                 b1 = d ** 2 / (8.0 * vs) + 0.5 * np.log(vs / np.sqrt(var[a] * var[b]))

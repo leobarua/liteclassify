@@ -1012,7 +1012,9 @@ def render_separability_image(result, class_colors, focus_pair=None, scale=2):
 
     notes = [
         f"Separability runs from 0 (identical) to 2 (completely distinct): {JM_GOOD} or more is good, "
-        f"{JM_FAIR}–{JM_GOOD} fair, below {JM_FAIR} poor.",
+        f"{JM_FAIR}–{JM_GOOD} fair, below {JM_FAIR} poor. Cross-validated: each pair is separated along the "
+        "best direction found on part of the samples and scored on the rest, so it doesn't saturate at 2 "
+        "with many features (the full-dimensional score used up to v1.1 did).",
         "The plot shows the selected pair only, with the most telling features on the left; each feature is "
         "scaled to the pair's combined range. Shaded bands are each class's usual range: the less they "
         "overlap, the easier the two are to tell apart.",
@@ -1040,7 +1042,7 @@ def render_separability_image(result, class_colors, focus_pair=None, scale=2):
     p.setPen(_CM_MUTED)
     p.setFont(f_sub)
     p.drawText(QRectF(margin, margin + 28, content_w, 20), Qt.AlignLeft | Qt.AlignVCenter,
-               f"Jeffries–Matusita distance · {sum(n.values())} training samples · {len(feats)} features")
+               f"Jeffries–Matusita distance, cross-validated · {sum(n.values())} training samples · {len(feats)} features")
 
     # --- JM table ---
     y0 = margin + title_h

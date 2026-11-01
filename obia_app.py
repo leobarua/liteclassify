@@ -5661,9 +5661,9 @@ class ObiaApp(QMainWindow):
         if len(result["classes"]) < 2:
             print("Separability: at least two classes need 2 or more training samples each.")
             return
-        print("Class separability (Jeffries-Matusita, 0-2):")
+        print("Class separability (Jeffries-Matusita, 0-2, cross-validated; full-dimensional as in v1.1 in brackets):")
         for (a, b) in sorted(result["jm_feature"], key=lambda k: result["jm"].loc[k[0], k[1]]):
-            print(f" -> {a} vs {b}: {result['jm'].loc[a, b]:.3f}")
+            print(f" -> {a} vs {b}: {result['jm'].loc[a, b]:.3f}  ({result['jm_classic'].loc[a, b]:.3f})")
         class_colors = {name: data["color"] for name, data in self.classes.items()}
         png_path = None
         if self.workspace_dir:
