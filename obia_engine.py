@@ -1764,6 +1764,10 @@ class ObiaEngine:
                 self.features_df[f"{self.DEEP_PREFIX}{tag}_pc{j + 1}"] = col
         return [c for c in self.features_df.columns if c.startswith(self.DEEP_PREFIX)]
 
+    # Below this many samples a class's cross-validated JM is mostly noise: on CAFS, 12
+    # mud samples split against themselves scored up to 1.3 (true value 0).
+    SEPARABILITY_MIN_N = 30
+
     def compute_class_separability(self, training_segments, features=None):
         """
         Class separability of the current training samples, before training.
@@ -1806,7 +1810,8 @@ class ObiaEngine:
         result = dict(classes=classes, skipped=skipped, n={c: n[c] for c in classes}, features=features,
                       mean=mean, std=std, jm=pd.DataFrame(index=classes, columns=classes, dtype=float),
                       jm_classic=pd.DataFrame(index=classes, columns=classes, dtype=float),
-                      jm_feature={}, low_n=[c for c in classes if n[c] < len(features)])
+                      jm_feature={}, low_n=[c for c in classes if n[c] < len(features)],
+                      few=[c for c in classes if n[c] < self.SEPARABILITY_MIN_N])
         if len(classes) < 2:
             return result
 
@@ -1826,20 +1831,24 @@ class ObiaEngine:
             v = (va + vb) / 2.0
             return (sa.mean() - sb.mean()) ** 2 / (8.0 * v) + 0.5 * np.log(v / np.sqrt(va * vb))
 
-        def cv_jm(xa, xb):
+        def cv_jm(xa, xb, repeats=5):
             from sklearn.model_selection import StratifiedKFold
             X = np.vstack([xa, xb])
             y = np.r_[np.zeros(len(xa), int), np.ones(len(xb), int)]
             k = min(5, len(xa), len(xb))
-            score = np.empty(len(y))
-            for tr, te in StratifiedKFold(k, shuffle=True, random_state=0).split(X, y):
-                Xa, Xb = X[tr][y[tr] == 0], X[tr][y[tr] == 1]
-                centred = np.vstack([Xa - Xa.mean(0), Xb - Xb.mean(0)])
-                sw = LedoitWolf().fit(centred).covariance_ + 1e-6 * np.eye(X.shape[1])
-                w = np.linalg.solve(sw, Xa.mean(0) - Xb.mean(0))
-                sc = np.sqrt(w @ sw @ w)           # unit within-class spread, so folds are comparable
-                score[te] = X[te] @ (w / sc if sc > 0 else w)
-            return jm_from_b(b_1d(score[y == 0], score[y == 1]))
+            jms = []
+            for seed in range(repeats):            # averaged over a few fixed splits: steadier near a cutoff
+                score = np.empty(len(y))
+                for tr, te in StratifiedKFold(k, shuffle=True, random_state=seed).split(X, y):
+                    Xa, Xb = X[tr][y[tr] == 0], X[tr][y[tr] == 1]
+                    ma, mb = Xa.mean(0), Xb.mean(0)
+                    sw = LedoitWolf().fit(np.vstack([Xa - ma, Xb - mb])).covariance_ + 1e-6 * np.eye(X.shape[1])
+                    w = np.linalg.solve(sw, ma - mb)
+                    sc = np.sqrt(w @ sw @ w)       # unit within-class spread and centred on the
+                    w = w / sc if sc > 0 else w    # training midpoint, so folds are comparable
+                    score[te] = (X[te] - (ma + mb) / 2.0) @ w
+                jms.append(jm_from_b(b_1d(score[y == 0], score[y == 1])))
+            return float(np.mean(jms))
 
         for i, a in enumerate(classes):
             result['jm'].loc[a, a] = np.nan

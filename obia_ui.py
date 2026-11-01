@@ -1019,8 +1019,13 @@ def render_separability_image(result, class_colors, focus_pair=None, scale=2):
         "scaled to the pair's combined range. Shaded bands are each class's usual range: the less they "
         "overlap, the easier the two are to tell apart.",
     ]
-    if result['low_n']:
-        notes.append("Fewer samples than features, so less reliable: " + ", ".join(result['low_n']) + ".")
+    few = result.get('few', [])
+    if few:
+        notes.append("Too few samples for a dependable score (under 30; its pairs can read high or low by "
+                     "chance): " + ", ".join(few) + ". Add samples to these classes before trusting their pairs.")
+    low = [c for c in result['low_n'] if c not in few]
+    if low:
+        notes.append("Fewer samples than features, so less reliable: " + ", ".join(low) + ".")
     if result['skipped']:
         notes.append("Left out, fewer than 2 samples: " + ", ".join(result['skipped']) + ".")
     note_text = "\n".join(notes)
