@@ -2241,8 +2241,8 @@ class ObiaApp(QMainWindow):
                     f"<a href='{od.DINOV3_LICENSE_URL}'>DINOv3 License</a>, which restricts some uses.")
         box.setInformativeText(
             f"Request access and download the backbone file from Meta (see <a href='{od.DINOV3_DOWNLOAD_URL}'>"
-            "the DINOv3 page</a>): dinov3_vits16_pretrain_lvd1689m-….pth (ViT-S/16) or "
-            "dinov3_vits16plus_pretrain_lvd1689m-….pth (ViT-S+/16). Lite Classify reads the file where it is; "
+            "the DINOv3 page</a>): dinov3_vits16plus_pretrain_lvd1689m-….pth (ViT-S+/16, about 115 MB). "
+            "Lite Classify reads the file where it is; "
             "it is not copied into workspaces.<br><br>Appearance features from DINOv3 differ from DINOv2's: "
             "switching recomputes them, and groups and classifiers made with the other backbone are redone.")
         choose = box.addButton("Choose File…", QMessageBox.AcceptRole)
@@ -2338,8 +2338,8 @@ class ObiaApp(QMainWindow):
         self._discover_group_now()
 
     # Seconds per segment for DINOv2 (two patches each), measured on the v1.0 builds:
-    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s. DINOv3 ViT-S/16 uses fewer tokens at
-    # 224 px (196 vs 256), so the same figure is a safe estimate for it.
+    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s. DINOv3 ViT-S+/16 measured within ~25 %
+    # of DINOv2 on CPU (fewer tokens, bigger blocks), so the same figure is a fair estimate.
     DEEP_S_PER_SEGMENT_CPU = 0.11
 
     def _confirm_cpu_deep_time(self):
@@ -3725,6 +3725,13 @@ class ObiaApp(QMainWindow):
         )
         self.acc_save_progress_btn.clicked.connect(self.save_accuracy_progress)
         col2_layout.addWidget(self.acc_save_progress_btn)
+        self.acc_export_points_btn = QPushButton("Export Points…")
+        self.acc_export_points_btn.setToolTip(
+            "Writes the labelled points (coordinates and your reference class only, not the map's "
+            "predictions) to a CSV. Another Lite Classify user can load it with Import Ground Truth "
+            "CSV to assess their map against the same points; the class names must match.")
+        self.acc_export_points_btn.clicked.connect(self.export_accuracy_points)
+        col2_layout.addWidget(self.acc_export_points_btn)
 
         self.acc_gen_group = QGroupBox("Random Point Generation")
         gen_layout = QVBoxLayout()
@@ -4361,6 +4368,25 @@ class ObiaApp(QMainWindow):
         wherever that file happens to now live. """
         if self.workspace_dir:
             os.makedirs(self.workspace_dir, exist_ok=True)
+
+    def export_accuracy_points(self):
+        gdf = self.engine.accuracy_points_gdf
+        n_lab = 0 if gdf is None else int(gdf['reference_class'].notna().sum())
+        if n_lab == 0:
+            print("Export Points: no labelled accuracy points yet.")
+            return
+        start = os.path.join(self.workspace_dir or "", "accuracy_points.csv")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Accuracy Points", start, "CSV Files (*.csv)")
+        if not path:
+            return
+        try:
+            n = self.engine.export_accuracy_points_csv(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Export Points", f"Could not write the CSV:\n{e}")
+            return
+        skipped = len(gdf) - n
+        print(f"Exported {n} labelled accuracy point(s) to {path}"
+              + (f" ({skipped} unlabelled left out)." if skipped else "."))
 
     def save_accuracy_progress(self):
         """ Lightweight manual save for accuracy points only -- writes

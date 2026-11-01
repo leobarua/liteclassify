@@ -5,10 +5,11 @@ to the groups (merge, split, ignore, name). No Qt in here -- obia_app.py owns th
 Deep features: a frozen backbone embeds a square patch of the orthomosaic around each
 segment's centroid, at two sizes (5 m: the object itself; 10 m: its surroundings). The
 backbone is DINOv2 ViT-S/14 (bundled, Apache 2.0) or, as an experimental option, a DINOv3
-ViT-S/16 or ViT-S+/16 weights file the user downloaded from Meta under Meta's own DINOv3
-License. Lite Classify never ships, downloads or copies DINOv3 weights: it only reads the
-file the user points it at, through timm's model code (Apache 2.0). All of them give
-384-number vectors, so everything after the backbone is the same.
+ViT-S+/16 weights file the user downloaded from Meta under Meta's own DINOv3 License
+(the only DINOv3 offered: ViT-S/16 was tested in the v1.2 builds and dropped). Lite
+Classify never ships, downloads or copies DINOv3 weights: it only reads the file the user
+points it at, through timm's model code (Apache 2.0). Both give 384-number vectors, so
+everything after the backbone is the same.
 
 Grouping clusters segments on those features and/or the 23 classifier features, each
 block scaled to equal weight, with k-means. Groups are deliberately more
@@ -36,11 +37,11 @@ WEIGHTS_URL = "https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14
 # Backbones: key -> display label. A deep-feature cache records its key; caches from
 # before v1.2 have none and are DINOv2.
 DEFAULT_BACKBONE = "dinov2_vits14"
-BACKBONES = {
+BACKBONES = {                       # offered in the Backbone list
     "dinov2_vits14": "DINOv2 ViT-S/14 (bundled)",
-    "dinov3_vits16": "DINOv3 ViT-S/16 (your download, experimental)",
-    "dinov3_vits16plus": "DINOv3 ViT-S+/16 (your download, experimental)",
+    "dinov3_vits16plus": "DINOv3 ViT-S+/16 (your file)",
 }
+_OTHER_LABELS = {"dinov3_vits16": "DINOv3 ViT-S/16"}   # caches made by v1.2 test builds
 DINOV3_LICENSE_URL = "https://ai.meta.com/resources/models-and-libraries/dinov3-license/"
 DINOV3_DOWNLOAD_URL = "https://github.com/facebookresearch/dinov3"   # explains how to request the weights
 GROUP_PALETTE = [
@@ -69,7 +70,8 @@ def _find_weights():
 
 
 def backbone_label(key):
-    return BACKBONES.get(key or DEFAULT_BACKBONE, key)
+    key = key or DEFAULT_BACKBONE
+    return BACKBONES.get(key) or _OTHER_LABELS.get(key, key)
 
 
 def backbone_short(key):
@@ -133,16 +135,17 @@ def dinov3_variant(state):
     if "storage_tokens" not in state or "blocks.0.attn.qkv.weight" not in state:
         if any(k.startswith("embeddings.") or k.startswith("model.") for k in state):
             raise ValueError("This looks like a Hugging Face conversion. Use Meta's original file "
-                             "(dinov3_vits16_pretrain_lvd1689m-....pth).")
+                             "(dinov3_vits16plus_pretrain_lvd1689m-….pth).")
         if any(k.startswith("stages.") or k.startswith("downsample_layers.") for k in state):
-            raise ValueError("This is a DINOv3 ConvNeXt file. Lite Classify supports the ViT-S/16 and ViT-S+/16 backbones.")
+            raise ValueError("This is a DINOv3 ConvNeXt file. Lite Classify uses the DINOv3 ViT-S+/16 backbone "
+                             "(dinov3_vits16plus_pretrain_lvd1689m-….pth).")
         raise ValueError("This is not a DINOv3 ViT backbone file (it may be a task head or a different model). "
-                         "Use dinov3_vits16_pretrain_lvd1689m-....pth or dinov3_vits16plus_pretrain_lvd1689m-....pth.")
+                         "Use dinov3_vits16plus_pretrain_lvd1689m-….pth.")
     dim = int(state["cls_token"].shape[-1])
     depth = len({k.split(".")[1] for k in state if k.startswith("blocks.")})
     if dim != 384 or depth != 12:
         raise ValueError(f"This DINOv3 backbone gives {dim}-number vectors with {depth} blocks. Lite Classify "
-                         "supports the small ones only (ViT-S/16 and ViT-S+/16, 384 numbers).")
+                         "uses the small ViT-S+/16 (dinov3_vits16plus_pretrain_lvd1689m-….pth).")
     return "dinov3_vits16plus" if "blocks.0.mlp.w1.weight" in state else "dinov3_vits16"
 
 
@@ -153,6 +156,9 @@ def check_dinov3_weights(path):
         raise ValueError("PyTorch is not installed; deep features are unavailable.")
     _timm_dinov3()
     key = dinov3_variant(_dinov3_state(path))
+    if key not in BACKBONES:
+        raise ValueError("This is DINOv3 ViT-S/16. Lite Classify uses DINOv3 ViT-S+/16: choose "
+                         "dinov3_vits16plus_pretrain_lvd1689m-….pth.")
     # Meta's file names end in the first 8 hex digits of the file's SHA-256: a mismatch
     # means a damaged or incomplete download.
     import re

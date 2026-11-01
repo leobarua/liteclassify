@@ -2148,6 +2148,17 @@ class ObiaEngine:
                 f"like 'x'/'y' (or lon/lat, easting/northing) and 'class'. Found columns: {list(df.columns)}"
             )
 
+        crs_col = find_col(['crs'])
+        if crs_col is not None and self.ortho_meta.get('crs') is not None:
+            from pyproj import CRS
+            found = {str(v).strip() for v in df[crs_col].dropna().unique()}
+            ortho = CRS.from_user_input(self.ortho_meta['crs'])
+            wrong = sorted(v for v in found if CRS.from_user_input(v) != ortho)
+            if wrong:
+                raise ValueError(
+                    f"The CSV's points are in {', '.join(wrong)}, but this orthomosaic is in "
+                    f"{ortho.to_string()}. Reproject the points first.")
+
         csv_classes = set(df[class_col].astype(str).str.strip().unique())
         valid_set = set(valid_class_names)
         mismatched = sorted(csv_classes - valid_set)
@@ -2181,6 +2192,26 @@ class ObiaEngine:
         )
         print(f" -> Imported {n} ground-truth point(s) from CSV ({csv_path}).")
         return n
+
+    def export_accuracy_points_csv(self, csv_path):
+        """ Writes the labelled accuracy points as x, y, class (+ point_id, crs) in the
+        orthomosaic's CRS: only the reference labels, never the map's predictions, so
+        another user can import them with import_accuracy_points_csv and assess their
+        own map against the same points. Returns the number written. """
+        gdf = self.accuracy_points_gdf
+        if gdf is None or len(gdf) == 0:
+            return 0
+        lab = gdf[gdf['reference_class'].notna()]
+        crs = self.ortho_meta.get('crs') if self.ortho_meta else None
+        out = pd.DataFrame({
+            'point_id': lab['point_id'].astype(int).values,
+            'x': lab.geometry.x.values,
+            'y': lab.geometry.y.values,
+            'class': lab['reference_class'].astype(str).values,
+            'crs': crs.to_string() if crs is not None else '',
+        })
+        out.to_csv(csv_path, index=False, float_format='%.3f')
+        return len(out)
 
     def add_manual_accuracy_point(self, x, y, reference_class=None, source_label='expert_visual'):
         """ Places a single point directly at a given real-world (x, y) -- the engine
