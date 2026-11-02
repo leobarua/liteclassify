@@ -26,6 +26,9 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.23462352"
     description: "Concept DOI: all versions of Lite Classify (resolves to the newest)"
+  - type: doi
+    value: "10.5281/zenodo.23877519"
+    description: "Version DOI: Lite Classify 1.2"
 keywords:
   - GEOBIA
   - object-based image analysis
