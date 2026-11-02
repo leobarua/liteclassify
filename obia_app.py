@@ -568,7 +568,7 @@ class ObiaApp(QMainWindow):
         e = self.engine
         if getattr(e, "ortho_path", None) is None:
             return None
-        parts = [e.ortho_path, e.dsm_path, e.effective_pixel_size,
+        parts = [e.ortho_path, getattr(e, "extent", None), e.dsm_path, e.effective_pixel_size,
                  None if e.segmented_image is None else od.seg_fingerprint(e.segmented_image),
                  tuple((n, d["color"].name(), hash(frozenset(int(x) for x in d["training_segments"])))
                        for n, d in self.classes.items()),
@@ -1061,6 +1061,16 @@ class ObiaApp(QMainWindow):
         self.elevation_opacity_slider.setMaximumWidth(120)
         self.elevation_opacity_slider.valueChanged.connect(self.refresh_load_view_overlay)
         overlay_bar.addWidget(self.elevation_opacity_slider)
+        self.extent_btn = QPushButton("Process This Extent Only")
+        self.extent_btn.setCheckable(True)
+        self.extent_btn.setEnabled(False)
+        self.extent_btn.setToolTip(
+            "Zoom and pan to the area you want, then press: only that part of the image is read "
+            "and processed (segmentation, features, classification, export). The rest stays "
+            "visible around it at lower resolution. Press again to go back to the whole image.")
+        self.extent_btn.setStyleSheet("QPushButton:checked { background-color: #e6a800; color: black; font-weight: 600; }")
+        self.extent_btn.toggled.connect(self.toggle_process_extent)
+        overlay_bar.addWidget(self.extent_btn)
         overlay_bar.addWidget(self._new_map_info(), 1)
         viewer_layout.addWidget(self._map_header([overlay_bar]))
 
@@ -1085,7 +1095,7 @@ class ObiaApp(QMainWindow):
             self.dsm_path_edit.setText(file_path)
             self.load_dsm()
 
-    def load_ortho(self, out_shape=None):
+    def load_ortho(self, out_shape=None, extent=None):
         filepath = self.path_edit.text()
         if not os.path.exists(filepath):
             print("Error: Input file path not found.")
@@ -1094,7 +1104,7 @@ class ObiaApp(QMainWindow):
             print(f"Loading image from: {filepath}...")
             QApplication.processEvents()
             try:
-                self.engine.load_raster(filepath, out_shape=out_shape)
+                self.engine.load_raster(filepath, out_shape=out_shape, extent=extent)
             finally:
                 # Whatever happened, the resample controls must describe the file now
                 # loaded (or none) and stay usable -- a failed load used to leave Apply
@@ -1102,10 +1112,9 @@ class ObiaApp(QMainWindow):
                 self._configure_resample_controls_for_new_source()
             if out_shape is None:   # a workspace grid is chosen, not forced by size
                 self._report_reduced_load()
+            self._sync_extent_button()
 
-            base_dir, file_name = os.path.split(filepath)
-            base_name, _ = os.path.splitext(file_name)
-            self.workspace_dir = os.path.join(base_dir, f"{base_name}_workspace")
+            self.workspace_dir = self._default_workspace_dir()
             # Not created here -- an empty <name>_workspace folder shouldn't appear
             # next to a tif just because it was loaded/browsed to (including while
             # relocating a moved raster during Load Workspace, which immediately
@@ -1278,58 +1287,62 @@ class ObiaApp(QMainWindow):
             eff = self.engine.effective_pixel_size if self.engine.native_crs_is_geographic else self.engine.effective_pixel_size * 100.0
             print(f"Resampled to {w}x{h} px (~{eff:.3f} {unit}).")
 
-            # Segmentation/classification were computed against the previous pixel
-            # grid -- none of it carries over to the new one (see resample_ortho's
-            # docstring for why this can't be preserved).
-            for data in self.classes.values():
-                data["training_segments"] = set()
-            self.classifier = None
-            self.classified_image_data = None
-            self.raw_classified_raster_ints = None
-            self.sieved_classified_raster_ints = None
-            self.base_seg_qimg = None
-            self.boundary_overlay_qimg = None
-            self.sample_class_map = None
-            self.selected_segments = set()
-            self.locked_selection = set()
-            self.current_seed_segments = set()
-            self.selection_undo_stack = []
-            self.selection_count_label.setText("Selected: 0 segments")
-            self.show_boundaries_check.setChecked(False)
-            self.show_boundaries_check.setEnabled(False)
-            self.current_view_mode = "segmented"
-            self.seg_view_btn.setChecked(True)
-            self.cls_view_btn.setChecked(False)
-            self.sync_classified_button_label()
-            self._sync_blend_availability()
-            self.update_list_widget_counts()
-            self.class_viewer.set_image(QImage())
-
-            self.reset_colors()
-            self.update_resample_preview_label()
-            self._configure_feature_res_control()
-            self._sync_segment_size()
-            self._sync_mmu_m2()
-            self.update_segmentation_plan_label()
-
-            # The image's pixel dimensions just changed -- show the whole thing rather
-            # than leaving the view at a zoom/pan level computed for the old size.
-            # (Accuracy points are stored in real-world CRS coordinates, not pixel
-            # indices, so they don't need clearing here -- they reproject onto the new
-            # grid automatically wherever they're drawn/hit-tested.)
-            self.viewer.fit_view()
-            self.acc_viewer.fit_view()
-
-            if had_dsm:
-                print("Reloading DSM to match the new orthomosaic resolution...")
-                self.load_dsm()
-            else:
-                self.update_dsm_status_label()
-                self.rebuild_hillshade_cache()
-
+            self._after_grid_change(had_dsm)
             print("Resample complete. Re-run segmentation to continue.")
         except Exception as e:
             print(f"Resample failed: {e}")
+
+    def _after_grid_change(self, had_dsm):
+        """ The working grid was re-read (resample, or a new processed extent): clear
+        everything computed on the old grid and bring the controls and views up to date. """
+        # Segmentation/classification were computed against the previous pixel
+        # grid -- none of it carries over to the new one (see resample_ortho's
+        # docstring for why this can't be preserved).
+        for data in self.classes.values():
+            data["training_segments"] = set()
+        self.classifier = None
+        self.classified_image_data = None
+        self.raw_classified_raster_ints = None
+        self.sieved_classified_raster_ints = None
+        self.base_seg_qimg = None
+        self.boundary_overlay_qimg = None
+        self.sample_class_map = None
+        self.selected_segments = set()
+        self.locked_selection = set()
+        self.current_seed_segments = set()
+        self.selection_undo_stack = []
+        self.selection_count_label.setText("Selected: 0 segments")
+        self.show_boundaries_check.setChecked(False)
+        self.show_boundaries_check.setEnabled(False)
+        self.current_view_mode = "segmented"
+        self.seg_view_btn.setChecked(True)
+        self.cls_view_btn.setChecked(False)
+        self.sync_classified_button_label()
+        self._sync_blend_availability()
+        self.update_list_widget_counts()
+        self.class_viewer.set_image(QImage())
+
+        self.reset_colors()
+        self.update_resample_preview_label()
+        self._configure_feature_res_control()
+        self._sync_segment_size()
+        self._sync_mmu_m2()
+        self.update_segmentation_plan_label()
+
+        # The image's pixel dimensions just changed -- show the whole thing rather
+        # than leaving the view at a zoom/pan level computed for the old size.
+        # (Accuracy points are stored in real-world CRS coordinates, not pixel
+        # indices, so they don't need clearing here -- they reproject onto the new
+        # grid automatically wherever they're drawn/hit-tested.)
+        self.viewer.fit_view()
+        self.acc_viewer.fit_view()
+
+        if had_dsm:
+            print("Reloading DSM to match the new orthomosaic resolution...")
+            self.load_dsm()
+        else:
+            self.update_dsm_status_label()
+            self.rebuild_hillshade_cache()
 
     def load_dsm(self):
         filepath = self.dsm_path_edit.text()
@@ -1400,6 +1413,122 @@ class ObiaApp(QMainWindow):
         self.engine.ortho_data = self.engine.original_ortho_data   # nothing writes into it in place
         self.reset_sliders()
         self.update_display_from_data()
+        self._apply_context()
+
+    # --- Process This Extent Only -------------------------------------------------------
+    def _default_workspace_dir(self):
+        """ <name>_workspace next to the ortho, or <name>_extent_<col>_<row>_<w>x<h>_workspace
+        for a processed extent, so work on an extent never overwrites the whole-image one. """
+        e = self.engine
+        base_dir, file_name = os.path.split(e.ortho_path or self.path_edit.text())
+        base_name, _ = os.path.splitext(file_name)
+        if e.extent is None:
+            return os.path.join(base_dir, f"{base_name}_workspace")
+        c, r, w, h = e.extent
+        return os.path.join(base_dir, f"{base_name}_extent_{c}_{r}_{w}x{h}_workspace")
+
+    def _apply_context(self):
+        """ The whole image (low resolution) around a processed extent, in every map. """
+        e = self.engine
+        rect = e.extent_in_grid() if e.extent is not None else None
+        pm = None
+        if rect is not None:
+            key = (e.ortho_path, e.file_width, e.file_height)
+            if getattr(self, "_context_key", None) != key or getattr(self, "_context_pixmap", None) is None:
+                try:
+                    rgba = e.read_context_overview()
+                except Exception as ex:
+                    print(f"Could not read the whole-image backdrop: {ex}")
+                    rgba = None
+                if rgba is not None:
+                    h, w = rgba.shape[:2]
+                    rgba = np.ascontiguousarray(rgba)
+                    self._context_pixmap = QPixmap.fromImage(
+                        QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy())
+                    self._context_key = key
+                else:
+                    self._context_pixmap = None
+            pm = getattr(self, "_context_pixmap", None)
+        for v in (self.viewer, self.discover_viewer, self.class_viewer, self.acc_viewer):
+            v.set_context(pm if rect is not None else None, rect)
+
+    def _sync_extent_button(self):
+        e = self.engine
+        self.extent_btn.blockSignals(True)
+        self.extent_btn.setChecked(e.extent is not None)
+        self.extent_btn.blockSignals(False)
+        self.extent_btn.setEnabled(e.ortho_path is not None and e.ortho_data is not None)
+        if e.extent is None:
+            self.extent_btn.setText("Process This Extent Only")
+        else:
+            c, r, w, h = e.extent
+            self.extent_btn.setText(f"Extent Only ({w:,} × {h:,} px) ✕")
+
+    def toggle_process_extent(self, checked):
+        """ On: re-read only the part of the image in view (at the current resolution);
+        the rest stays visible around it. Off: back to the whole image. """
+        e = self.engine
+        if e.ortho_data is None or e.ortho_path is None:
+            self._sync_extent_button()
+            return
+        if checked:
+            r = self.viewer.visible_grid_rect()
+            c0, r0 = e.grid_to_native(r.left(), r.top())
+            c1, r1 = e.grid_to_native(r.right(), r.bottom())
+            extent = e.clamp_extent((c0, r0, c1 - c0, r1 - r0), e.file_width, e.file_height)
+            if extent is None:
+                print("Process This Extent Only: zoom in to the area to process first (the view "
+                      "shows the whole image, or too little of it).")
+                self._sync_extent_button()
+                return
+            what = f"only the area in view ({extent[2]:,} × {extent[3]:,} native px)"
+        else:
+            extent = None
+            what = "the whole image again"
+
+        has_downstream_work = (
+            e.segmented_image is not None or self.classified_image_data is not None
+            or any(d["training_segments"] for d in self.classes.values()))
+        if has_downstream_work:
+            reply = QMessageBox.question(
+                self, "Process This Extent Only",
+                f"Work on {what}? This clears the current segmentation, training samples and "
+                "classification (save the workspace first to keep them). Classes, colours and "
+                "accuracy points are kept.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                self._sync_extent_button()
+                return
+
+        # Keep the working resolution; for the whole image, only if it fits in memory.
+        f = (e.effective_pixel_size / e.native_pixel_size) if e.native_pixel_size else 1.0
+        f = max(1.0, f)
+        fw, fh = (extent[2], extent[3]) if extent is not None else (e.file_width, e.file_height)
+        out_shape = (max(1, round(fh / f)), max(1, round(fw / f)))
+        if extent is None and out_shape[0] * out_shape[1] > e.load_pixel_limit():
+            out_shape = None
+        had_dsm = bool(self.dsm_path_edit.text()) and os.path.exists(self.dsm_path_edit.text())
+        try:
+            print(f"Reading {what}...")
+            QApplication.processEvents()
+            e.load_raster(e.ortho_path, out_shape=out_shape, extent=extent)
+            if e.dsm_path is None and had_dsm:
+                e.load_dsm(self.dsm_path_edit.text())
+        except Exception as ex:
+            print(f"Could not read the extent: {ex}")
+            self._sync_extent_button()
+            return
+        self.workspace_dir = self._default_workspace_dir()
+        self._configure_resample_controls_for_new_source()
+        self._after_grid_change(had_dsm)
+        self._sync_extent_button()
+        h, w = e.ortho_data.shape[1:]
+        if e.extent is None:
+            print(f"Whole image: {w:,} × {h:,} px. Workspace: {self.workspace_dir}")
+        else:
+            print(f"Processing this extent only: {w:,} × {h:,} px at the working resolution. The rest of the "
+                  f"image is shown around it for context (yellow outline = processed area). "
+                  f"Workspace: {self.workspace_dir}")
 
     def reset_sliders(self):
         self.brightness_spinbox.setValue(0)
@@ -1619,7 +1748,8 @@ class ObiaApp(QMainWindow):
         bands and bit depth, DSM. Rebuilt only when the image, grid or DSM changes. """
         e = self.engine
         grid = None if e.ortho_data is None else tuple(e.ortho_data.shape[1:])
-        key = (e.ortho_path, e.effective_pixel_size, grid, getattr(e, "dsm_path", None), e.has_dsm)
+        key = (e.ortho_path, e.effective_pixel_size, grid, getattr(e, "dsm_path", None), e.has_dsm,
+               getattr(e, "extent", None))
         if key == self._map_info_key:
             return
         self._map_info_key = key
@@ -1631,7 +1761,7 @@ class ObiaApp(QMainWindow):
             epsg = crs.to_epsg() if crs is not None else None
             parts = [f"Native {self._ground_size(e.native_pixel_size)}",
                      f"working {self._ground_size(e.effective_pixel_size)}",
-                     f"{w:,} × {h:,} px",
+                     f"{w:,} × {h:,} px" + (" (extent only)" if getattr(e, "extent", None) else ""),
                      f"EPSG:{epsg}" if epsg else "custom CRS"]
             details = [f"Orthomosaic: {os.path.basename(e.ortho_path or '')}",
                        f"Native pixel size {self._ground_size(e.native_pixel_size)}, working "
@@ -6353,6 +6483,7 @@ class ObiaApp(QMainWindow):
                 "compactness": self.compactness_dspinbox.value(),
                 "sigma": self.sigma_dspinbox.value(),
                 "ortho_path": self.engine.ortho_path,
+                "extent": None if self.engine.extent is None else [int(v) for v in self.engine.extent],
                 "effective_pixel_size": self.engine.effective_pixel_size,
                 "feature_pixel_size": self.engine.feature_pixel_size,
                 "dsm_path": self.engine.dsm_path,
@@ -6437,6 +6568,19 @@ class ObiaApp(QMainWindow):
             # exact pixel grid and won't line up with a differently-sized ortho.
             with rasterio.open(os.path.join(target_workspace_dir, "segments.tif")) as src:
                 saved_shape = (src.height, src.width)
+            saved_extent = session_data.get("extent")
+            saved_extent = None if not saved_extent else tuple(int(v) for v in saved_extent)
+            if self.engine.ortho_data is not None and (
+                    self.engine.extent != saved_extent
+                    or os.path.normcase(os.path.abspath(self.engine.ortho_path or ""))
+                    != os.path.normcase(os.path.abspath(session_data.get("ortho_path") or ""))):
+                # Another extent (or the whole image) is loaded: read this workspace's own.
+                if session_data.get("ortho_path") and os.path.exists(session_data["ortho_path"]):
+                    self.path_edit.setText(session_data["ortho_path"])
+                    self.load_ortho(out_shape=saved_shape, extent=saved_extent)
+                    self.workspace_dir = target_workspace_dir
+                elif self.engine.extent != saved_extent:
+                    self.engine.ortho_data = None   # falls through to locating the file below
             if self.engine.ortho_data is None:
                 ortho_path = session_data.get("ortho_path")
                 if not ortho_path or not os.path.exists(ortho_path):
@@ -6445,7 +6589,7 @@ class ObiaApp(QMainWindow):
                         print("Error: Orthomosaic not found and none was located -- workspace load cancelled.")
                         return
                 self.path_edit.setText(ortho_path)
-                self.load_ortho(out_shape=saved_shape)   # straight onto the saved grid
+                self.load_ortho(out_shape=saved_shape, extent=saved_extent)   # straight onto the saved grid
                 if self.engine.ortho_data is None:
                     print("Error: Failed to load the workspace's orthomosaic.")
                     return
@@ -6687,6 +6831,8 @@ class ObiaApp(QMainWindow):
         self.classifier = None
         self._set_refine_settings(None)
         self._refine_cutoff_set = False
+        self._apply_context()
+        self._sync_extent_button()
 
         self.base_raw_qimg = None
         self.raw_pixmap = None

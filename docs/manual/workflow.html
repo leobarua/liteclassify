@@ -42,6 +42,7 @@
         <li><a href="#load">Load the orthomosaic</a></li>
         <li><a href="#dsm">Add a DSM</a></li>
         <li><a href="#resample">Resample</a></li>
+        <li><a href="#extent">Process part of the image</a></li>
         <li><a href="#color">Colour correction</a></li>
         <li><a href="#elevation">Elevation overlay</a></li>
       </ol>
@@ -156,7 +157,16 @@
 </ol>
 <div class="warn"><p><strong>Resampling clears downstream work.</strong> The segmentation, Discover groups, the classification and all training samples are tied to the old pixel grid and are cleared. Your class names and colours are kept, and so are accuracy points (they are stored in map coordinates). Resample first, then segment.</p></div>
 
-<h3 id="color">6.5 Colour correction</h3>
+<h3 id="extent">6.5 Process only part of the image (optional)</h3>
+<p>To work on one area only, for example on a modest computer, during a demo, or when only part of the survey matters, zoom and pan the Tab 1 map to that area and press <span class="ui">Process This Extent Only</span> above the map. Only that part of the orthomosaic (and DSM) is read, at the current working resolution, and everything after it (segmentation, features, Discover, classification, export and accuracy) runs on it alone. The rest of the image stays visible around it at lower resolution, with a yellow outline around the processed area, so you can still scroll the whole survey for context.</p>
+<ul>
+  <li>Press the button again to go back to the whole image. Changing the area clears the segmentation, samples and classification, like a resample; classes, colours and accuracy points are kept.</li>
+  <li>The extent gets its own workspace folder (<code>&lt;name&gt;_extent_&lt;col&gt;_&lt;row&gt;_&lt;width&gt;x&lt;height&gt;_workspace</code>), so it never overwrites the whole-image workspace, and Load Workspace reopens the same area.</li>
+  <li>Accuracy points outside the extent are left out of the assessment, with a note in the console.</li>
+  <li>Resample still works inside the extent, so a small area can be processed at full resolution.</li>
+</ul>
+
+<h3 id="color">6.6 Colour correction</h3>
 <p>Click <span class="ui">Color Correction</span> to open the panel. <span class="ui">Auto-Correct</span> stretches the image so its darkest 2% and brightest 2% of values become black and white. The sliders adjust brightness, contrast, hue, saturation, temperature and the red, green and blue gains; <span class="ui">Reset Colors</span> undoes everything.</p>
 <div class="compare" data-label="Compare original colour with Auto-Correct">
   <img src="img/color_before.jpg" alt="Original colours">
@@ -165,7 +175,7 @@
 </div>
 <div class="note" style="margin-top:18px"><p><strong>What correction changes.</strong> The corrected image is what the segmenter sees, so it changes where boundaries fall. The features, however, are always measured on the original, uncorrected pixels. Correction helps segmentation on dull or hazy imagery but does not shift the values the classifier learns from.</p></div>
 
-<h3 id="elevation">6.6 Elevation overlay</h3>
+<h3 id="elevation">6.7 Elevation overlay</h3>
 <p>Tick <span class="ui">Show Elevation</span> above the viewer to lay the shaded DSM over the image, and set its <span class="ui">Opacity</span> (default 60%). Use it to confirm the DSM lines up with the image: roof edges and crown outlines should sit exactly on their shading.</p>
 <figure>
   <img src="img/hillshade_overlay.jpg" alt="Close-up of the shaded DSM over the image" style="max-width:min(640px,100%)">

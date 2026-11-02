@@ -1,6 +1,6 @@
 import numpy as np
 from PySide6.QtWidgets import (
-    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QGraphicsEllipseItem, QListWidget, QStyledItemDelegate, QStyle,
+    QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QGraphicsItem, QGraphicsEllipseItem, QGraphicsRectItem, QListWidget, QStyledItemDelegate, QStyle,
     QAbstractButton, QWidget, QVBoxLayout, QToolButton, QFrame, QHBoxLayout, QLabel, QDialog,
     QGridLayout, QCheckBox, QPushButton, QComboBox, QScrollArea, QListWidgetItem, QSizePolicy
 )
@@ -159,6 +159,22 @@ class InteractivePhotoViewer(QGraphicsView):
         self._detail_timer.setSingleShot(True)
         self._detail_timer.setInterval(120)
         self._detail_timer.timeout.connect(self._update_detail)
+        # Process This Extent Only: the whole file (low resolution) around the processed grid (in
+        # grid pixels, so it can sit at negative coordinates), plus an outline of the grid.
+        self._context_item = QGraphicsPixmapItem()
+        self._context_item.setZValue(-1)
+        self._context_item.setOpacity(1.0)
+        self._context_item.setTransformationMode(Qt.SmoothTransformation)
+        self._context_item.setVisible(False)
+        self._scene.addItem(self._context_item)
+        self._context_rect = None
+        self._extent_outline = QGraphicsRectItem()
+        pen = QPen(QColor(255, 196, 0), 2)
+        pen.setCosmetic(True)
+        self._extent_outline.setPen(pen)
+        self._extent_outline.setZValue(99)
+        self._extent_outline.setVisible(False)
+        self._scene.addItem(self._extent_outline)
 
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.AnchorUnderMouse)
@@ -224,6 +240,48 @@ class InteractivePhotoViewer(QGraphicsView):
         self._detail_item.setVisible(False)
         self._detail_item.setPixmap(QPixmap())
         self._detail_timer.start()
+        self._update_scene_rect()
+
+    def set_context(self, pixmap, rect):
+        """ The whole file (QPixmap/QImage) drawn at rect=(x, y, w, h) in grid pixels
+        around the processed extent, with the extent outlined; pixmap=None removes both. """
+        if pixmap is None or rect is None:
+            self._context_item.setVisible(False)
+            self._context_item.setPixmap(QPixmap())
+            self._extent_outline.setVisible(False)
+            self._context_rect = None
+        else:
+            pm = pixmap if isinstance(pixmap, QPixmap) else QPixmap.fromImage(pixmap)
+            x, y, w, h = rect
+            self._context_item.setPixmap(pm)
+            self._context_item.setTransform(QTransform.fromScale(w / max(1, pm.width()), h / max(1, pm.height())))
+            self._context_item.setPos(x, y)
+            self._context_item.setVisible(True)
+            self._context_rect = QRectF(x, y, w, h)
+            gw, gh = self.base_size()
+            self._extent_outline.setRect(QRectF(0, 0, gw, gh))
+            self._extent_outline.setVisible(True)
+        self._update_scene_rect()
+
+    def _scene_bounds(self):
+        gw, gh = self.base_size()
+        r = QRectF(0, 0, gw, gh)
+        if self._context_rect is not None:
+            r = r.united(self._context_rect)
+        return r
+
+    def _update_scene_rect(self):
+        r = self._scene_bounds()
+        if r.width() > 0 and r.height() > 0:
+            self._scene.setSceneRect(r)
+        if self._context_rect is not None:
+            gw, gh = self.base_size()
+            self._extent_outline.setRect(QRectF(0, 0, gw, gh))
+
+    def visible_grid_rect(self):
+        """ The part of the map in view, in grid pixels (may reach outside the grid when a
+        context backdrop is shown). """
+        return self.mapToScene(self.viewport().rect()).boundingRect()
 
     def base_size(self):
         """ The map's size in working-grid pixels (the coordinates every signal uses). """
@@ -455,7 +513,8 @@ class InteractivePhotoViewer(QGraphicsView):
         pixmap = self._pixmap_item.pixmap()
         if pixmap.isNull():
             return None
-        pw, ph = self.base_size()
+        b = self._scene_bounds()        # the grid, or the whole file around an extent
+        pw, ph = b.width(), b.height()
         vw, vh = self.viewport().width(), self.viewport().height()
         if pw <= 0 or ph <= 0 or vw <= 0 or vh <= 0:
             return None
@@ -484,7 +543,7 @@ class InteractivePhotoViewer(QGraphicsView):
             # This step would overshoot past the boundary -- snap exactly to it.
             self.resetTransform()
             self.scale(fit_scale, fit_scale)
-            self.centerOn(self._pixmap_item)
+            self.centerOn(self._scene_bounds().center())
         else:
             self.scale(zoom_out_factor, zoom_out_factor)
         self.viewChanged.emit()

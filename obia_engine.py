@@ -291,6 +291,13 @@ class ObiaEngine:
         self.native_pixel_size = None
         self.native_width = None
         self.native_height = None
+        # Process-this-extent-only: (col_off, row_off, width, height) in the source file's
+        # native pixels, or None for the whole file. Everything is then read from that
+        # window only, and native_width/native_height describe the window (the "source"
+        # every resolution is relative to); file_width/file_height keep the whole file.
+        self.extent = None
+        self.file_width = None
+        self.file_height = None
         self.native_crs_is_geographic = False
         self.source_dtype = None
         self.source_bands = None
@@ -328,41 +335,72 @@ class ObiaEngine:
             return LOAD_MAX_PX
         return max(25e6, min(LOAD_MAX_PX, 0.5 * ram / WORKING_BYTES_PER_PX))
 
+    def _window(self):
+        """ The rasterio Window of the processed extent, or None for the whole file. """
+        if self.extent is None:
+            return None
+        c, r, w, h = self.extent
+        return rasterio.windows.Window(c, r, w, h)
+
     @staticmethod
-    def _read_ortho(src, out_h, out_w):
+    def clamp_extent(extent, file_w, file_h, min_px=64):
+        """ (col, row, w, h) in native pixels, clipped to the file; None when it covers
+        (almost) the whole file or is too small to use. """
+        if extent is None:
+            return None
+        c, r, w, h = (int(round(v)) for v in extent)
+        c0, r0 = max(0, c), max(0, r)
+        c1, r1 = min(file_w, c + w), min(file_h, r + h)
+        if c1 - c0 < min_px or r1 - r0 < min_px:
+            return None
+        if c0 == 0 and r0 == 0 and c1 == file_w and r1 == file_h:
+            return None
+        return (c0, r0, c1 - c0, r1 - r0)
+
+    def _read_ortho(self, src, out_h, out_w):
         """ RGB + valid mask from an open raster at out_h x out_w (average resampling for
-        the colours, nearest for the mask; GDAL uses the file's overviews when it has them).
+        the colours, nearest for the mask; GDAL uses the file's overviews when it has them),
+        over the processed extent (self.extent) or the whole file.
         Returns (data, meta, valid_mask). """
-        same = (out_h == src.height and out_w == src.width)
+        win = self._window()
+        src_w = src.width if win is None else int(win.width)
+        src_h = src.height if win is None else int(win.height)
+        same = (out_h == src_h and out_w == src_w)
         if same:
-            data = src.read((1, 2, 3))
+            data = src.read((1, 2, 3), window=win)
         else:
-            data = src.read((1, 2, 3), out_shape=(3, out_h, out_w),
+            data = src.read((1, 2, 3), window=win, out_shape=(3, out_h, out_w),
                             resampling=rasterio.enums.Resampling.average)
         data = to_uint8(data)   # 16-bit and float orthos: everything downstream works in 0..255
-        transform = src.transform * src.transform.scale(src.width / out_w, src.height / out_h)
+        base = src.transform if win is None else src.window_transform(win)
+        transform = base * base.scale(src_w / out_w, src_h / out_h)
         meta = src.meta.copy()
         meta.update(width=out_w, height=out_h, transform=transform)
         try:
             if same:
-                valid_mask = src.read_masks(1) > 0
+                valid_mask = src.read_masks(1, window=win) > 0
             else:
-                valid_mask = src.read_masks(1, out_shape=(out_h, out_w),
+                valid_mask = src.read_masks(1, window=win, out_shape=(out_h, out_w),
                                             resampling=rasterio.enums.Resampling.nearest) > 0
         except Exception:
             rgb_sum = np.sum(data, axis=0)
             valid_mask = (rgb_sum > 0) & (rgb_sum < 765)
         return data, meta, valid_mask
 
-    def load_raster(self, filepath, max_pixels=None, out_shape=None):
+    def load_raster(self, filepath, max_pixels=None, out_shape=None, extent=None):
         """ Reads the orthomosaic. Above max_pixels (default: load_pixel_limit()) it is read
         straight at a reduced resolution instead of at native -- a 6 Gpx file would need
         18 GB just to hold. out_shape=(h, w) reads exactly that grid instead (Load
-        Workspace). self.load_reduction is the linear factor (1.0 = native). """
+        Workspace). extent=(col, row, w, h) in native pixels reads only that part of the
+        file (Process This Extent Only). self.load_reduction is the linear factor (1.0 =
+        native). """
         if max_pixels is None:
             max_pixels = self.load_pixel_limit()
         with rasterio.open(filepath) as src:
-            native_px = src.width * src.height
+            self.file_width, self.file_height = src.width, src.height
+            self.extent = self.clamp_extent(extent, src.width, src.height)
+            src_w, src_h = ((src.width, src.height) if self.extent is None else self.extent[2:])
+            native_px = src_w * src_h
             factor = max(1.0, float(np.sqrt(native_px / max_pixels)))
             if factor > 1.0:
                 # Snap up to one of the file's overview levels when it has them: GDAL then
@@ -371,16 +409,16 @@ class ObiaEngine:
                 levels = [f for f in (src.overviews(1) or []) if f >= factor]
                 if levels:
                     factor = float(min(levels))
-            out_w = max(1, int(round(src.width / factor)))
-            out_h = max(1, int(round(src.height / factor)))
+            out_w = max(1, int(round(src_w / factor)))
+            out_h = max(1, int(round(src_h / factor)))
             if out_shape is not None:
                 out_h, out_w = int(out_shape[0]), int(out_shape[1])
-                factor = src.width / out_w
+                factor = src_w / out_w
             data, meta, valid_mask = self._read_ortho(src, out_h, out_w)
             self.ortho_path = filepath
             self.native_pixel_size = abs(src.transform.a)
-            self.native_width = src.width
-            self.native_height = src.height
+            self.native_width = src_w
+            self.native_height = src_h
             self.native_crs_is_geographic = bool(src.crs and src.crs.is_geographic)
             self.source_dtype = str(src.dtypes[0])      # before to_uint8 (status line)
             self.source_bands = int(src.count)
@@ -395,6 +433,42 @@ class ObiaEngine:
                      "features_df", "adjacency_graph"):
             setattr(self, name, None)
         return self.ortho_data, self.ortho_meta
+
+    def read_context_overview(self, max_side=3072):
+        """ The whole file as a small RGB array (h, w, 3) uint8 for the faded backdrop
+        around a processed extent, or None. Read with nearest resampling from the file's
+        overviews when it has them, so it stays quick on large files. """
+        if self.ortho_path is None:
+            return None
+        with rasterio.open(self.ortho_path) as src:
+            f = max(1.0, max(src.width, src.height) / float(max_side))
+            ow, oh = max(1, int(round(src.width / f))), max(1, int(round(src.height / f)))
+            data = to_uint8(src.read((1, 2, 3), out_shape=(3, oh, ow),
+                                     resampling=rasterio.enums.Resampling.nearest))
+            try:
+                m = src.read_masks(1, out_shape=(oh, ow), resampling=rasterio.enums.Resampling.nearest) > 0
+            except Exception:
+                m = np.ones((oh, ow), bool)
+        rgba = np.zeros((oh, ow, 4), np.uint8)
+        rgba[..., :3] = np.transpose(data, (1, 2, 0))
+        rgba[..., 3] = np.where(m, 255, 0)
+        return rgba
+
+    def extent_in_grid(self):
+        """ Where the whole file sits in working-grid pixels: (x, y, w, h), for drawing the
+        context backdrop around a processed extent. None without an extent. """
+        if self.extent is None or self.ortho_data is None:
+            return None
+        H, W = self.ortho_data.shape[1:]
+        fx, fy = self.native_width / W, self.native_height / H
+        c, r = self.extent[:2]
+        return (-c / fx, -r / fy, self.file_width / fx, self.file_height / fy)
+
+    def grid_to_native(self, x, y):
+        """ Working-grid pixel -> native pixel of the whole file. """
+        H, W = self.ortho_data.shape[1:]
+        c, r = (0, 0) if self.extent is None else self.extent[:2]
+        return c + x * self.native_width / W, r + y * self.native_height / H
 
     def resample_ortho(self, target_pixel_size=None, scale_percent=None, out_shape=None):
         """
@@ -435,8 +509,9 @@ class ObiaEngine:
 
         with rasterio.open(self.ortho_path) as src:
             native_pixel_size = abs(src.transform.a)
+            src_w, src_h = self.native_width or src.width, self.native_height or src.height
             if out_shape is not None:
-                factor = src.width / out_shape[1]
+                factor = src_w / out_shape[1]
             elif scale_percent is not None:
                 if scale_percent <= 0:
                     raise ValueError("scale_percent must be > 0.")
@@ -447,8 +522,8 @@ class ObiaEngine:
                 factor = target_pixel_size / native_pixel_size
             factor = max(factor, 1e-6)
 
-            out_width = max(1, int(round(src.width / factor)))
-            out_height = max(1, int(round(src.height / factor)))
+            out_width = max(1, int(round(src_w / factor)))
+            out_height = max(1, int(round(src_h / factor)))
             if out_shape is not None:
                 out_height, out_width = int(out_shape[0]), int(out_shape[1])
 
@@ -1387,7 +1462,8 @@ class ObiaEngine:
         scales the working-grid labels (and DSM/slope) up onto it. """
         seg = self.segmented_image
         H, W = seg.shape
-        Hn, Wn = src.height, src.width
+        Hn, Wn = self.native_height, self.native_width     # the processed extent (or whole file)
+        oc, orow = (0, 0) if self.extent is None else self.extent[:2]
         wr0 = min(slices[s - 1][0].start for s in owned)
         wr1 = max(slices[s - 1][0].stop for s in owned)
         wc0 = min(slices[s - 1][1].start for s in owned)
@@ -1396,7 +1472,7 @@ class ObiaEngine:
         nc0, nc1 = int(np.floor(wc0 * Wn / W)), min(Wn, int(np.ceil(wc1 * Wn / W)))
         fh = max(1, int(round((nr1 - nr0) * Hf / Hn)))
         fw = max(1, int(round((nc1 - nc0) * Wf / Wn)))
-        win = rasterio.windows.Window(nc0, nr0, nc1 - nc0, nr1 - nr0)
+        win = rasterio.windows.Window(oc + nc0, orow + nr0, nc1 - nc0, nr1 - nr0)
         same = (fh == nr1 - nr0 and fw == nc1 - nc0)
         rs = rasterio.enums.Resampling.nearest if same else rasterio.enums.Resampling.average
         rgb = to_uint8(src.read((1, 2, 3), window=win, out_shape=(3, fh, fw), resampling=rs))
@@ -2446,6 +2522,17 @@ class ObiaEngine:
         transform = self.ortho_meta['transform']
         h, w = classified_raster.shape
         class_lookup = {idx: name for idx, name in enumerate(class_names_ordered, start=1)}
+        # Points outside the processed extent (Process This Extent Only) say nothing about
+        # this map: leave them out instead of counting them as Unclassified.
+        if self.extent is not None:
+            cr = [~transform * (g.x, g.y) for g in labeled.geometry]
+            inside = np.array([0 <= int(r) < h and 0 <= int(c) < w for c, r in cr], dtype=bool)
+            n_out = int((~inside).sum())
+            if n_out:
+                print(f"Accuracy: {n_out} labelled point(s) lie outside the processed extent and are left out.")
+                labeled = labeled[inside].copy()
+            if len(labeled) == 0:
+                raise ValueError("None of the labelled accuracy points lie inside the processed extent.")
 
         predicted = []
         for geom in labeled.geometry:
