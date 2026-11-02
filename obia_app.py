@@ -3406,71 +3406,79 @@ class ObiaApp(QMainWindow):
         dsm_status_layout.addLayout(dsm_action_layout)
         dsm_status_group.setLayout(dsm_status_layout)
 
-        # --- Interactive Active Views: Show Training Samples toggle now lives here
-        # (moved off Class Management), and the view-mode buttons below have fixed,
-        # spec'd toggle logic -- see toggle_segmented_view/toggle_classified_view/
-        # toggle_blend_mode/_sync_blend_availability for the actual state machine.
-        view_group = QGroupBox("Interactive Active Views")
+        # --- Map view: Ortho / Segments / Classified (exclusive), overlay switches for
+        # training samples and segment boundaries, and the colour layer's opacity --
+        # see _set_class_view / _sync_blend_availability.
+        view_group = QGroupBox("Map View")
         view_layout = QVBoxLayout()
 
-        samples_row = QHBoxLayout()
-        samples_row.addWidget(QLabel("Show Training Samples"))
+        # What the map shows: one of three base views (exclusive), then two overlays that
+        # work in any view (training samples, segment boundaries), then how the coloured
+        # layer (segments or classes) sits over the ortho.
+        show_row = QHBoxLayout()
+        show_row.addWidget(QLabel("Show:"))
+        self.ortho_view_btn = QPushButton("Ortho")
+        self.ortho_view_btn.setToolTip("The orthomosaic alone")
+        self.seg_view_btn = QPushButton("Segments")
+        self.seg_view_btn.setToolTip("Each segment in its average colour")
+        self.cls_view_btn = QPushButton("Classified")
+        self.cls_view_btn.setToolTip("The classified map (after Classify All Segments)")
+        self.cls_view_btn.setEnabled(False)
+        self.view_btn_group = QButtonGroup(self)
+        self.view_btn_group.setExclusive(True)
+        for btn in (self.ortho_view_btn, self.seg_view_btn, self.cls_view_btn):
+            btn.setCheckable(True)
+            btn.setStyleSheet("QPushButton:checked { background-color: #2e6db4; color: white; font-weight: 600; }")
+            self.view_btn_group.addButton(btn)
+            show_row.addWidget(btn, 1)
+        self.seg_view_btn.setChecked(True)
+        self.ortho_view_btn.clicked.connect(lambda: self._set_class_view("raw"))
+        self.seg_view_btn.clicked.connect(lambda: self._set_class_view("segmented"))
+        self.cls_view_btn.clicked.connect(lambda: self._set_class_view("classified"))
+        view_layout.addLayout(show_row)
+
+        toggles_row = QHBoxLayout()
+        toggles_row.addWidget(QLabel("Training samples"))
         self.toggle_samples_btn = ToggleSwitch()
         self.toggle_samples_btn.setChecked(True)
         self.toggle_samples_btn.clicked.connect(self.toggle_samples_view)
-        samples_row.addWidget(self.toggle_samples_btn)
-        samples_row.addStretch()
-        view_layout.addLayout(samples_row)
+        toggles_row.addWidget(self.toggle_samples_btn)
+        toggles_row.addSpacing(16)
+        toggles_row.addWidget(QLabel("Segment boundaries"))
+        self.toggle_edges_btn = ToggleSwitch()
+        self.toggle_edges_btn.setChecked(False)
+        self.toggle_edges_btn.setToolTip("Outline every segment, in any view")
+        self.toggle_edges_btn.clicked.connect(lambda: self.update_classification_display())
+        toggles_row.addWidget(self.toggle_edges_btn)
+        toggles_row.addStretch()
+        view_layout.addLayout(toggles_row)
 
-        btn_layout = QHBoxLayout()
-        self.blend_toggle_btn = QPushButton("Blend Overlay")
-        self.blend_toggle_btn.setCheckable(True)
-        self.blend_toggle_btn.setEnabled(False)  # no classification yet -- nothing to blend
-        self.blend_toggle_btn.clicked.connect(self.toggle_blend_mode)
-
-        self.seg_view_btn = QPushButton("Segmented")
-        self.seg_view_btn.setCheckable(True)
-        self.seg_view_btn.setChecked(True)
-        self.seg_view_btn.clicked.connect(self.toggle_segmented_view)
-
-        self.cls_view_btn = QPushButton("Raw Ortho")
-        self.cls_view_btn.setCheckable(True)
-        self.cls_view_btn.clicked.connect(self.toggle_classified_view)
-
-        btn_layout.addWidget(self.blend_toggle_btn)
-        btn_layout.addWidget(self.seg_view_btn)
-        btn_layout.addWidget(self.cls_view_btn)
-        view_layout.addLayout(btn_layout)
-
-        # --- Making the Opacity Slider permanently visible ---
         self.opacity_container = QWidget()
         opacity_lay = QHBoxLayout(self.opacity_container)
+        opacity_lay.setContentsMargins(0, 0, 0, 0)
         opacity_lay.addWidget(QLabel("Opacity:"))
 
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(100)
-        self.opacity_slider.setEnabled(False) # Default disabled until blend mode active
-
+        self.opacity_slider.setToolTip("How strongly the segments or classes cover the ortho")
         # Applies when the slider is released (setTracking(False)), not on every step.
         self.opacity_slider.setTracking(False)
         self.opacity_slider.valueChanged.connect(self.update_classification_display)
-        # On/off switch: hides the classified layer (opacity 0) or restores the slider value.
+        # On/off switch: hides the coloured layer (opacity 0) or restores the slider value.
         self.opacity_toggle = ToggleSwitch()
         self.opacity_toggle.setChecked(True)
-        self.opacity_toggle.setEnabled(False)
-        self.opacity_toggle.setToolTip("Show / hide the classified layer over the ortho")
+        self.opacity_toggle.setToolTip("Show / hide the segments or classes over the ortho")
         self.opacity_toggle.clicked.connect(self.update_classification_display)
-        # Kept for code that still refers to it; hidden.
+        # Kept for code that still refers to it.
         self.opacity_spinbox = self.opacity_toggle
 
-        # How the classified layer mixes with the ortho in Blend Overlay: Multiply tints the
-        # ortho (texture stays visible), Normal is plain transparency (truer colours).
+        # How the coloured layer mixes with the ortho: Normal is plain transparency (at 100%
+        # the flat map), Multiply tints the ortho so its texture stays visible.
         self.blend_mode_combo = QComboBox()
-        self.blend_mode_combo.addItems(["Multiply", "Normal"])
-        self.blend_mode_combo.setToolTip("Multiply: the class colour tints the ortho, keeping its texture. "
-                                         "Normal: plain transparency -- truer colours, less texture.")
-        self.blend_mode_combo.setEnabled(False)
+        self.blend_mode_combo.addItems(["Normal", "Multiply"])
+        self.blend_mode_combo.setToolTip("Normal: plain transparency -- at 100% the flat map.\n"
+                                         "Multiply: the colour tints the ortho, keeping its texture.")
         self.blend_mode_combo.currentIndexChanged.connect(lambda _: self.update_classification_display())
 
         opacity_lay.addWidget(self.opacity_slider)
@@ -5130,61 +5138,35 @@ class ObiaApp(QMainWindow):
         return acc_gdf
 
     def sync_classified_button_label(self):
-        """ "Raw Ortho" until a classification exists, then "Classified Map" -- see
-        the toggle_*_view methods below for what each state actually does. """
-        has_classification = self.classified_image_data is not None
-        self.cls_view_btn.setText("Classified Map" if has_classification else "Raw Ortho")
+        """ Classified is offered once a classification exists. """
+        self.cls_view_btn.setEnabled(self.classified_image_data is not None)
 
     def _sync_blend_availability(self):
-        """ Blend Overlay is only ever selectable when a classification exists AND the
-        Classified Map / Raw Ortho button is the active view -- toggling Segmented on
-        always disables it, and it snaps back off (with the opacity controls) the
-        moment it becomes unselectable, so it never gets left on in a state where it
-        has nothing to blend. """
-        has_classification = self.classified_image_data is not None
-        blend_selectable = has_classification and self.cls_view_btn.isChecked() and not self.seg_view_btn.isChecked()
-        self.blend_toggle_btn.setEnabled(blend_selectable)
-        if not blend_selectable:
-            self.blend_toggle_btn.setChecked(False)
-            self.opacity_slider.setEnabled(False)
-            self.opacity_spinbox.setEnabled(False)
-            self.blend_mode_combo.setEnabled(False)
+        """ Keep the view buttons on the current view, and the opacity controls on only
+        when there is a coloured layer (segments or classes) to fade. """
+        mode = self.current_view_mode
+        if mode == "classified" and self.classified_image_data is None:
+            mode = self.current_view_mode = "raw"
+        btn = {"raw": self.ortho_view_btn, "segmented": self.seg_view_btn,
+               "classified": self.cls_view_btn}.get(mode, self.ortho_view_btn)
+        btn.setChecked(True)
+        on = mode in ("segmented", "classified")
+        for w in (self.opacity_slider, self.opacity_toggle, self.blend_mode_combo):
+            w.setEnabled(on)
 
-    def toggle_blend_mode(self):
-        is_checked = self.blend_toggle_btn.isChecked()
-        self.opacity_slider.setEnabled(is_checked)
-        self.opacity_spinbox.setEnabled(is_checked)
-        self.blend_mode_combo.setEnabled(is_checked)
+    def _set_class_view(self, mode):
+        if mode == "classified" and self.classified_image_data is None:
+            print("Notice: No classification yet -- run Classify All Segments first.")
+            mode = "raw"
+        self.current_view_mode = mode
+        self._sync_blend_availability()
         self.update_classification_display()
 
     def toggle_segmented_view(self):
-        """ Segmented and Classified/Raw-Ortho are independently checkable (not a
-        QButtonGroup radio pair) so Classified/Raw-Ortho can be toggled off by itself
-        to fall back to the raw view -- see toggle_classified_view. Selecting Segmented
-        always wins over the other button, and always kills Blend Overlay. """
-        if self.seg_view_btn.isChecked():
-            self.cls_view_btn.setChecked(False)
-            self.current_view_mode = "segmented"
-        else:
-            self.current_view_mode = "classified" if (self.cls_view_btn.isChecked() and self.classified_image_data is not None) else "raw"
-        self._sync_blend_availability()
-        self.update_classification_display()
+        self._set_class_view("segmented" if self.seg_view_btn.isChecked() else "raw")
 
     def toggle_classified_view(self):
-        """ Unlike Segmented, this button can be toggled OFF by itself (it's not
-        exclusively grouped) -- doing so reveals the raw ortho (with its segment-
-        boundary outline overlay), independent of whatever Segmented is doing. """
-        if self.cls_view_btn.isChecked():
-            self.seg_view_btn.setChecked(False)
-            if self.classified_image_data is None:
-                print("Notice: No classification result calculated yet. Displaying raw image instead.")
-                self.current_view_mode = "raw"
-            else:
-                self.current_view_mode = "classified"
-        else:
-            self.current_view_mode = "raw"
-        self._sync_blend_availability()
-        self.update_classification_display()
+        self._set_class_view("classified" if self.cls_view_btn.isChecked() else "raw")
 
     def setup_classification_view(self):
         """ After a fresh segmentation: Classification shows the segmented view (the
@@ -5714,17 +5696,15 @@ class ObiaApp(QMainWindow):
         v = self.class_viewer
         v.set_base_image_cached(self.raw_pixmap, grid_size=self.raw_grid)
         mode = self.current_view_mode
-        if mode == "segmented":
-            v.set_layer("view", self.base_seg_qimg, 1.0, z=1)
+        opacity = self.opacity_slider.value() / 100.0 if self.opacity_toggle.isChecked() else 0.0
+        multiply = self.blend_mode_combo.currentText() == "Multiply"
+        if mode == "segmented" and self.base_seg_qimg is not None:
+            v.set_layer("view", self.base_seg_qimg, opacity, z=1, multiply=multiply)
         elif mode == "classified" and self.classified_qimg is not None:
-            opacity = 1.0
-            if self.blend_toggle_btn.isChecked():
-                opacity = self.opacity_slider.value() / 100.0 if self.opacity_toggle.isChecked() else 0.0
-            multiply = self.blend_toggle_btn.isChecked() and self.blend_mode_combo.currentText() == "Multiply"
             v.set_layer("view", self.classified_qimg, opacity, z=1, multiply=multiply)
         else:
             v.set_layer("view", None)
-        v.set_layer("edges", self.boundary_overlay_qimg if mode == "raw" else None, 1.0, z=2)
+        v.set_layer("edges", self.boundary_overlay_qimg if self.toggle_edges_btn.isChecked() else None, 1.0, z=2)
         if self._samples_item is None or v.layer("samples") is not self._samples_item:
             arr = self._samples_lut()[self._seg_disp()[1]]
             self._samples_item = v.set_array_layer("samples", arr, z=3)

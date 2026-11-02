@@ -72,6 +72,7 @@
         <li><a href="#train">Train and classify</a></li>
         <li><a href="#views">Check with the views</a></li>
         <li><a href="#loop">The retraining loop</a></li>
+        <li><a href="#greenness">Greenness refinement</a></li>
         <li><a href="#mmu">Minimum mapping unit</a></li>
         <li><a href="#export">Export and save</a></li>
       </ol>
@@ -321,7 +322,7 @@
 </ol>
 
 <h3 id="views">10.3 Check with the views</h3>
-<p>The view buttons switch what the viewer shows: <span class="ui">Raw Ortho</span> (it becomes the Raw/Classified toggle after classifying), <span class="ui">Segmented</span> (objects in their mean colour) and <span class="ui">Blend Overlay</span> (classes over the image). The opacity slider and switch control the overlay; the blend mode is <em>Multiply</em> (tints the image and keeps its texture, the default) or <em>Normal</em>. Flip between them often: errors that hide in one view jump out in another.</p>
+<p>In <span class="ui">Map View</span>, <span class="ui">Show</span> picks one of three views: <span class="ui">Ortho</span> (the image alone), <span class="ui">Segments</span> (objects in their mean colour) and <span class="ui">Classified</span> (the map, available after classifying). Two switches work in every view: <span class="ui">Training samples</span> and <span class="ui">Segment boundaries</span>. The opacity slider and switch fade the segments or classes over the image; the mode is <em>Normal</em> (plain transparency, at 100% the flat map, the default) or <em>Multiply</em> (tints the image and keeps its texture). Flip between them often: errors that hide in one view jump out in another.</p>
 <p>Drag across each pair below to compare the image with the worked example's map, at five places in the survey:</p>
 <div class="cgallery">
   <div class="compare" data-label="Compare orthomosaic and classified map">
@@ -342,16 +343,31 @@
 <h3 id="loop">10.4 The retraining loop</h3>
 <p>Retraining is the core of the method. <a href="concepts.html#retraining">Part B, 5.8</a> replays it on the example's own labels.</p>
 <ol class="steps">
-  <li><strong>Scan the whole map</strong> in Blend Overlay at 50–70% opacity. Note each <em>kind</em> of error: "dry stream bed read as Bare soil", "banana edge read as Natural canopy".</li>
+  <li><strong>Scan the whole map</strong> in the Classified view at 50–70% opacity (Multiply). Note each <em>kind</em> of error: "dry stream bed read as Bare soil", "banana edge read as Natural canopy".</li>
   <li><strong>Add a few correct samples of each kind</strong>, in different parts of the scene. Use What to Label Next for the cases the model itself is unsure about.</li>
   <li><strong>Train Classifier</strong>, then <strong>Classify All Segments</strong> again. All samples, old and new, are used.</li>
   <li><strong>Repeat</strong> until a round changes little. Then measure on Tab 4 instead of judging by eye.</li>
 </ol>
 
-<h3 id="mmu">10.5 Set a minimum mapping unit</h3>
+<h3 id="greenness">10.5 Refine two classes by greenness (optional)</h3>
+<p>Objects decide what kind of land an area is, but a feature narrower than an object, such as a grass row between bare beds or a strip along a ditch, is lost inside it. <span class="ui">Greenness Refinement (pixel level)</span> re-decides, pixel by pixel, the pixels mapped as two classes you pick, using their greenness (ExG, the same index as the <code>exg_mean</code> feature, averaged over a small window). Every other class stays as the objects decided.</p>
+<ol class="steps">
+  <li>Tick <span class="ui">Refine two classes by greenness (ExG)</span> before <span class="ui">Classify All Segments</span> (or after; the map updates either way).</li>
+  <li>Check <span class="ui">Green</span> and <span class="ui">Other</span>, for example Grass and Bare soil. They are guessed from the class names.</li>
+  <li>The <span class="ui">Cutoff</span> is set from your training samples the first time: the ExG value that best separates the two classes' samples. <span class="ui">From Samples</span> sets it again after you add samples. Lower it to keep faint or dying grass green; raise it to make rows thinner.</li>
+  <li><span class="ui">Window</span> is the square greenness is averaged over. 3×3 pixels is the default; a smaller window follows thin rows more tightly but is noisier.</li>
+</ol>
+<p>The two modes differ only in how the green class can turn into the other one. In both, pixels of the other class that read green become the green class one by one, which is what brings out the rows.</p>
+<ul>
+  <li><strong>Keep green segments whole</strong> (default): a green-class object turns to the other class only as a whole, when under a quarter of its pixels read green. Patchy or dying grass stays solid.</li>
+  <li><strong>Every pixel, both ways</strong>: every pixel at or below the cutoff becomes the other class. Edges are sharpest, but patchy grass gets holes.</li>
+</ul>
+<p>The refined map is what the view, the minimum mapping unit, the export and the accuracy assessment all use. The console reports how much of the map moved each way. The map is then no longer purely object-based for those two classes: rows can come out a little wider than they are, so treat the green class's area with care in row crops. The setting is saved with the workspace and with each iteration.</p>
+
+<h3 id="mmu">10.6 Set a minimum mapping unit</h3>
 <p>Under <span class="ui">Post-Classification Generalization</span>, set the <span class="ui">MMU</span> either in pixels (0–2,000) or as an area in m²; the two boxes stay in step with the working grid (at 10 cm, 1,000 px = 10 m²). Patches of one class smaller than this are absorbed by the class around them. The map updates when you release the slider or leave a box. The example used 0; see <a href="concepts.html#sieve">Part B, 5.9</a>.</p>
 
-<h3 id="export">10.6 Export and save</h3>
+<h3 id="export">10.7 Export and save</h3>
 <ol class="steps">
   <li>Click <span class="ui">Export Final Classified TIF</span>. The dialog suggests <code>&lt;name&gt;_classified.tif</code> in the workspace folder.</li>
   <li>Lite Classify writes a single-band GeoTIFF (value 1 = first class in the list, 2 = second, …, 0 = no data) with your colours embedded, plus a <code>.qml</code> style file of the same name for QGIS.</li>
