@@ -307,17 +307,36 @@ class ClassMatchDialog(QDialog):
         close = difflib.get_close_matches(cls._norm(csv_name), list(norm), n=1, cutoff=0.75)
         return norm[close[0]] if close else None
 
-    def __init__(self, csv_counts, workspace_names, parent=None):
+    def __init__(self, csv_counts, workspace_names, parent=None, inside_counts=None):
+        """ inside_counts: {csv class: points inside the processed extent} when an extent is
+        set -- adds the "only inside the extent" switch. """
         super().__init__(parent)
-        self.setWindowTitle("Match Classes")
+        self.setWindowTitle("Import Ground Truth Points")
         self.setMinimumWidth(560)
         self.workspace_names = list(workspace_names)
+        self.csv_counts = dict(csv_counts)
+        self.inside_counts = None if inside_counts is None else dict(inside_counts)
         layout = QVBoxLayout(self)
-        intro = QLabel("Some class names in the CSV don't match this workspace. Choose where each one's "
-                       "points go. A new class gets no training samples; collect them in Tab 3 before "
-                       "classifying.")
+        if any(c not in self.workspace_names for c in csv_counts):
+            text = ("Some class names in the CSV don't match this workspace. Choose where each one's "
+                    "points go. A new class gets no training samples; collect them in Tab 3 before "
+                    "classifying.")
+        else:
+            text = "Choose where each CSV class's points go."
+        intro = QLabel(text)
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        self.inside_check = None
+        if self.inside_counts is not None:
+            n_in, n_all = sum(self.inside_counts.values()), sum(self.csv_counts.values())
+            self.inside_check = QCheckBox(f"Only import points inside the processed extent "
+                                          f"({n_in} of {n_all})")
+            self.inside_check.setChecked(True)
+            self.inside_check.setToolTip("Points outside the extent can't be assessed against this map. "
+                                         "Untick to import them all (they stay on the map but are left "
+                                         "out of the assessment).")
+            self.inside_check.toggled.connect(self._refresh_counts)
+            layout.addWidget(self.inside_check)
         self.table = QTableWidget(len(csv_counts), 3)
         self.table.setHorizontalHeaderLabels(["Class in CSV", "Points", "Import as"])
         self.table.verticalHeader().setVisible(False)
@@ -326,9 +345,11 @@ class ClassMatchDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.combos = {}
+        self._rows = {}
         for row, (name, n) in enumerate(sorted(csv_counts.items())):
             self.table.setItem(row, 0, QTableWidgetItem(name))
             self.table.setItem(row, 1, QTableWidgetItem(str(n)))
+            self._rows[name] = row
             combo = QComboBox()
             for w in self.workspace_names:
                 combo.addItem(w, w)
@@ -354,6 +375,18 @@ class ClassMatchDialog(QDialog):
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
+        self._refresh_counts()
+
+    def only_inside(self):
+        return self.inside_check is not None and self.inside_check.isChecked()
+
+    def _counts(self):
+        return self.inside_counts if self.only_inside() else self.csv_counts
+
+    def _refresh_counts(self, *_):
+        counts = self._counts()
+        for name, row in self._rows.items():
+            self.table.item(row, 1).setText(str(counts.get(name, 0)))
         self._update_missing()
 
     def mapping(self):
@@ -371,7 +404,8 @@ class ClassMatchDialog(QDialog):
         return out, new
 
     def _update_missing(self, *_):
-        used = {v for v in self.mapping()[0].values() if v}
+        counts = self._counts()
+        used = {v for c, v in self.mapping()[0].items() if v and counts.get(c, 0) > 0}
         missing = [w for w in self.workspace_names if w not in used]
         self.missing_label.setText("No points in this CSV for: " + ", ".join(missing) + "." if missing else "")
         self.missing_label.setVisible(bool(missing))
@@ -4139,9 +4173,16 @@ class ObiaApp(QMainWindow):
         assign_dd_row.addWidget(self.acc_assign_class_combo, 1)
         assign_layout.addLayout(assign_dd_row)
 
+        checked_row = QHBoxLayout()
         unassign_checked_btn = QPushButton("Unassign Checked")
+        unassign_checked_btn.setToolTip("Clear the class of the checked points (they stay on the map)")
         unassign_checked_btn.clicked.connect(self.unassign_checked_accuracy_points)
-        assign_layout.addWidget(unassign_checked_btn)
+        delete_checked_btn = QPushButton("Delete Checked")
+        delete_checked_btn.setToolTip("Remove the checked points altogether")
+        delete_checked_btn.clicked.connect(self.delete_checked_accuracy_points)
+        checked_row.addWidget(unassign_checked_btn)
+        checked_row.addWidget(delete_checked_btn)
+        assign_layout.addLayout(checked_row)
 
         assign_group.setLayout(assign_layout)
         col2_layout.addWidget(assign_group, 1)   # grows to fill the column
@@ -4241,29 +4282,40 @@ class ObiaApp(QMainWindow):
             return
         counts = df["class"].value_counts().to_dict()
         names = list(self.classes.keys())
-        class_map, new = None, []
-        if any(c not in self.classes for c in counts):
-            dlg = ClassMatchDialog(counts, names, self)
+        class_map, new, only_inside = None, [], False
+        inside_counts = None
+        if self.engine.extent is not None:
+            inside = self.engine.points_inside_grid(df["x"], df["y"])
+            if not inside.all():
+                inside_counts = df[inside]["class"].value_counts().to_dict()
+                inside_counts = {c: int(inside_counts.get(c, 0)) for c in counts}
+        if any(c not in self.classes for c in counts) or inside_counts is not None:
+            dlg = ClassMatchDialog(counts, names, self, inside_counts=inside_counts)
             if dlg.exec() != QDialog.Accepted:
                 print("CSV import cancelled.")
                 self.sync_accuracy_gt_controls()
                 return
             class_map, new = dlg.mapping()
+            only_inside = dlg.only_inside()
+            if only_inside:
+                counts = {c: n for c, n in inside_counts.items() if n > 0}
+                new = [c for c in new if c in counts]
         try:
             for name in new:
                 self._ensure_class(name, source="the ground-truth CSV")
             if new:
                 self.rebuild_sample_class_map()
-            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()), class_map=class_map)
+            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()), class_map=class_map,
+                                                       only_inside=only_inside)
         except Exception as e:
             QMessageBox.critical(self, "CSV Import Failed", str(e))
             self.sync_accuracy_gt_controls()
             return
-        targets = set(counts) if class_map is None else {v for v in class_map.values() if v}
-        skipped = [c for c, v in (class_map or {}).items() if v is None]
-        renamed = {c: v for c, v in (class_map or {}).items() if v and v != c}
+        targets = set(counts) if class_map is None else {v for c, v in class_map.items() if v and c in counts}
+        skipped = [c for c, v in (class_map or {}).items() if v is None and c in counts]
+        renamed = {c: v for c, v in (class_map or {}).items() if v and v != c and c in counts}
         no_points = [c for c in names if c not in targets]
-        lines = [f"{n} points loaded from CSV."]
+        lines = [f"{n} points loaded from CSV" + (" (inside the processed extent only)." if only_inside else ".")]
         if renamed:
             lines.append("Matched: " + ", ".join(f"{c} → {v}" for c, v in renamed.items()) + ".")
         if new:
@@ -4698,6 +4750,17 @@ class ObiaApp(QMainWindow):
             print("No points are checked.")
             return
         self.unassign_accuracy_points(list(self.acc_checked_point_ids))
+
+    def delete_checked_accuracy_points(self):
+        if not self.acc_checked_point_ids:
+            print("No points are checked.")
+            return
+        ids = sorted(self.acc_checked_point_ids)
+        reply = QMessageBox.question(
+            self, "Delete Points", f"Delete the {len(ids)} checked point(s)? This cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.delete_accuracy_points(ids)
 
     def clear_accuracy_selection(self):
         """ Deselects (unchecks) every currently multi-selected point, without

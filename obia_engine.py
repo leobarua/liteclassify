@@ -2373,7 +2373,20 @@ class ObiaEngine:
                             'class': df[class_col].astype(str).str.strip()})
         return out[(out['class'] != '') & (out['class'].str.lower() != 'nan')].reset_index(drop=True)
 
-    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv', class_map=None):
+    def points_inside_grid(self, xs, ys):
+        """ Boolean array: which map coordinates fall on the working grid (the processed
+        extent, or the whole image). """
+        xs, ys = np.asarray(xs, float), np.asarray(ys, float)
+        if self.ortho_meta is None or self.ortho_data is None or len(xs) == 0:
+            return np.ones(len(xs), dtype=bool)
+        inv = ~self.ortho_meta['transform']
+        H, W = self.ortho_data.shape[1:]
+        cols = inv.a * xs + inv.b * ys + inv.c
+        rows = inv.d * xs + inv.e * ys + inv.f
+        return (cols >= 0) & (cols < W) & (rows >= 0) & (rows < H)
+
+    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv', class_map=None,
+                                   only_inside=False):
         """
         Adds the points of a ground-truth CSV (see read_accuracy_points_csv) as labelled
         accuracy points. class_map: optional {csv class name: class name to use, or None to
@@ -2382,6 +2395,8 @@ class ObiaEngine:
         mismatch, so a typo is never silently guessed at. Returns the number imported.
         """
         df = self.read_accuracy_points_csv(csv_path)
+        if only_inside:
+            df = df[self.points_inside_grid(df['x'], df['y'])].reset_index(drop=True)
         if class_map is not None:
             df['class'] = df['class'].map(lambda c: class_map.get(c, c))
             df = df[df['class'].notna()].reset_index(drop=True)

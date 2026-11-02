@@ -406,7 +406,8 @@
   <li><strong>Import Ground Truth CSV</strong>: field points you collected. Browse to the CSV; tick <span class="ui">Also generate expert-visual points</span> to add photo-interpreted points on top.</li>
   <li><strong>No Ground Truth Available (Generate Expert Points)</strong>: Lite Classify places random points for you to label from the image.</li>
 </ul>
-<p>A ground-truth CSV needs an x column, a y column and a class column, with coordinates in the orthomosaic's own coordinate system. Header names are matched loosely (x/lon/easting, y/lat/northing, class/reference_class/label); class names must match Tab 3 exactly, or the import stops and lists the mismatches.</p>
+<p>A ground-truth CSV needs an x column, a y column and a class column, with coordinates in the orthomosaic's own coordinate system. Header names are matched loosely (x/lon/easting, y/lat/northing, class/reference_class/label). A CSV written by <span class="ui">Export Points</span> in another Lite Classify workspace imports directly.</p>
+<p>When a CSV class name doesn't match Tab 3, the import dialog lets you send its points to an existing class (close spellings are suggested), to a new class, or leave them out, and it lists workspace classes the CSV has no points for. With <a href="#extent">Process This Extent Only</a> on, it also offers <span class="ui">Only import points inside the processed extent</span> (ticked by default).</p>
 
 <h3 id="acc-design">11.2 Choose a design and generate points</h3>
 <ol class="steps">
@@ -419,7 +420,7 @@
 <h3 id="acc-label">11.3 Label the points</h3>
 <ol class="steps">
   <li>Double-click a point in the list, or press <kbd>.</kbd> and <kbd>,</kbd>, to fly to it. The viewer shows the raw image only.</li>
-  <li>Decide what is under the point. Right-click it and choose a class, or tick several points and use <span class="ui">Assign checked to</span>.</li>
+  <li>Decide what is under the point. Right-click it and choose a class, or tick several points and use <span class="ui">Assign checked to</span>. <span class="ui">Unassign Checked</span> clears their class; <span class="ui">Delete Checked</span> removes them.</li>
   <li>Use <span class="ui">Save Points</span> as you go; a long labelling session is real work.</li>
 </ol>
 <div class="note"><p><strong>Label what is under the point, not what is nearby.</strong> If the point sits on a roof edge under an overhanging crown, label what covers that spot from above. If you truly cannot tell, delete the point rather than guess. Ideally, someone other than the person who picked the training samples does the labelling.</p></div>
