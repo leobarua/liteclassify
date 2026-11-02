@@ -126,13 +126,13 @@
     <text x="328" y="124">19 measurements,</text><text x="328" y="142">24 with a DSM</text><text x="328" y="160">(automatic)</text>
     <text x="482" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">04 · optional</text>
     <text x="482" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Discover</text>
-    <text x="482" y="124">DINOv2 appearance,</text><text x="482" y="142">group look-alikes,</text><text x="482" y="160">name the groups</text>
+    <text x="482" y="124">DINOv2/v3 appearance,</text><text x="482" y="142">group look-alikes,</text><text x="482" y="160">name the groups</text>
     <text x="636" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">05</text>
     <text x="636" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Label &amp; train</text>
     <text x="636" y="124">Click examples,</text><text x="636" y="142">check separability,</text><text x="636" y="160">train a Random Forest</text>
     <text x="790" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">06</text>
     <text x="790" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Classify</text>
-    <text x="790" y="124">Predict every object,</text><text x="790" y="142">sieve small patches,</text><text x="790" y="160">export GeoTIFF</text>
+    <text x="790" y="124">Predict every object,</text><text x="790" y="142">refine, sieve,</text><text x="790" y="160">export GeoTIFF</text>
     <text x="944" y="76" font-family="JetBrains Mono, monospace" fill="#76817b">07</text>
     <text x="944" y="98" font-weight="700" font-size="16" fill="#17201c" font-family="Archivo, sans-serif">Assess</text>
     <text x="944" y="124">Sample points,</text><text x="944" y="142">label them blind,</text><text x="944" y="160">read the matrix</text>
@@ -157,6 +157,9 @@
 <details class="why"><summary>Running from source instead</summary>
 <p>Clone the <a href="https://github.com/leobarua/liteclassify" target="_blank" rel="noopener" data-goatcounter-click="github-source" data-goatcounter-title="Lite Classify source on GitHub">repository</a>, create a Python 3.13 environment (<code>python -m venv .venv</code>), run <code>pip install -r requirements.txt</code>, then <code>python liteclassify.py</code>. The requirements pull the CUDA 12.4 build of PyTorch; on a machine without an NVIDIA GPU, use <code>requirements-cpu.txt</code> instead. The DINOv2 weights (<code>dinov2_vits14_pretrain.pth</code>, about 85 MB) are downloaded once on first use, or read from a <code>models</code> folder beside the code. Close the app before upgrading packages: Windows locks loaded libraries.</p>
 </details>
+<details class="why"><summary>Optional: DINOv3 appearance features</summary>
+<p>Lite Classify ships with DINOv2 for its appearance features. It can also use Meta's DINOv3 ViT-S+/16, which in our tests grouped look-alike objects more sensibly. DINOv3 is under Meta's own licence, so it is never bundled or downloaded by the app: request the weights from Meta (<a href="https://github.com/facebookresearch/dinov3" target="_blank" rel="noopener">github.com/facebookresearch/dinov3</a>), then pick the file under <span class="ui">Backbone</span> in Tab 2 (<a href="workflow.html#find">Part C, 8.1</a>). Only the ViT-S+/16 file (<code>dinov3_vits16plus_pretrain_lvd1689m-….pth</code>) is accepted; the app checks the file's checksum against its name.</p>
+</details>
 <div class="table-wrap"><table>
   <thead><tr><th>Requirement</th><th>Needed</th><th>Notes</th></tr></thead>
   <tbody>
@@ -164,32 +167,32 @@
     <tr><td>Graphics card</td><td>Optional</td><td>An NVIDIA GPU with CUDA speeds up segmentation (about 10× in our tests) and the DINOv2 appearance features.</td></tr>
     <tr><td>Memory (RAM)</td><td>16 GB or more recommended</td><td>Lite Classify checks memory before loading, resampling and segmenting, and suggests a coarser resolution or tiling when a step would not fit. Very large mosaics are read at reduced resolution on load.</td></tr>
     <tr><td>WebODM</td><td>Optional</td><td>Only to make orthomosaics from drone photos inside Lite Classify (<a href="workflow.html#webodm">Part C, 6.1</a>). Installed and run separately; Lite Classify includes no photogrammetry.</td></tr>
-    <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it. The worked example's workspace is about 0.9 GB.</td></tr>
+    <tr><td>Disk</td><td>Room for a workspace</td><td>Each orthomosaic gets a <code>&lt;name&gt;_workspace</code> folder next to it. A processed extent gets its own folder (<a href="workflow.html#extent">Part C, 6.5</a>).</td></tr>
   </tbody>
 </table></div>
 
 <h2 id="sample"><span class="num">3</span>The worked example</h2>
-<p>Every figure and number in this manual comes from one drone survey: a <span data-d="grid.area_ha" data-fmt="f1"></span> ha mixed-use block in Bay, Laguna, on the eastern side of the Mount Makiling range in the Philippines. In one flight it holds the cover types an operational workflow has to separate: closed natural canopy; agroforestry stands of coconut, banana and fruit trees; grass and regrowth on disturbed ground; bare soil on tracks and earthworks; a small stream; roads and buildings; and a solid-waste disposal site with its cleared apron.</p>
+<p>Every figure and number in this manual comes from one drone survey: the <span data-d="grid.area_ha" data-fmt="f1"></span> ha CAFS experimental agricultural site of the University of the Philippines Los Baños, used for field experiments in agriculture-related courses. It lies along UPLB Pili Drive in Los Baños, Laguna, northeast of the Mount Makiling Forest Reserve and outside its boundaries. In one flight it holds what an agricultural map has to separate: annual crops in rows and blocks, thin grass strips between bare beds, dying grass that is nearly the colour of soil, mud, a pond and ditches, a road lined with trees, and buildings.</p>
 <dl class="kv">
-  <div><dt>Orthomosaic</dt><dd>RGB, 8-bit, <span data-d="grid.native_pixel_m" data-mul="100" data-fmt="f1"></span> cm/px</dd></div>
+  <div><dt>Orthomosaic</dt><dd>RGB, 8-bit, <span data-d="grid.native_pixel_m" data-mul="100" data-fmt="f2"></span> cm/px</dd></div>
   <div><dt>Native size</dt><dd><span data-d="grid.native_width" data-fmt="int"></span> × <span data-d="grid.native_height" data-fmt="int"></span> px</dd></div>
-  <div><dt>Surface model</dt><dd>DSM, <span data-d="grid.dsm_pixel_m" data-mul="100" data-fmt="f1"></span> cm/px</dd></div>
-  <div><dt>Working grid</dt><dd>10 cm · <span data-d="grid.width" data-fmt="int"></span> × <span data-d="grid.height" data-fmt="int"></span> px</dd></div>
+  <div><dt>Surface model</dt><dd>DSM, <span data-d="grid.dsm_pixel_m" data-mul="100" data-fmt="f2"></span> cm/px</dd></div>
+  <div><dt>Working grid</dt><dd>5 cm · <span data-d="grid.width" data-fmt="int"></span> × <span data-d="grid.height" data-fmt="int"></span> px</dd></div>
   <div><dt>Mapped area</dt><dd><span data-d="grid.area_ha" data-fmt="f1"></span> ha</dd></div>
   <div><dt>Coordinates</dt><dd>WGS 84 / UTM 51N</dd></div>
   <div><dt>DSM heights</dt><dd><span data-d="dsm.min" data-fmt="f0"></span>–<span data-d="dsm.max" data-fmt="f0"></span> m</dd></div>
   <div><dt>Objects</dt><dd><span data-d="segmentation.segments" data-fmt="int"></span></dd></div>
 </dl>
 <div class="strip c2">
-  <figure><img src="img/sample_ortho.jpg" alt="The full survey orthomosaic"><figcaption><b>Orthomosaic</b> True colour, as the camera saw it. The road runs from the south-west to the settlement in the north; the pale patch on the east side is the disposal site.</figcaption></figure>
-  <figure><img src="img/sample_dsm.jpg" alt="The DSM shown as coloured, hill-shaded elevation"><figcaption><b>Digital Surface Model</b> Height of the top surface (canopy, roofs, ground), shaded from the north-west.</figcaption></figure>
+  <figure><img src="img/sample_ortho.jpg" alt="The full survey orthomosaic"><figcaption><b>Orthomosaic</b> True colour, as the camera saw it. Pili Drive crosses the site from south-west to north-east; the pond lies to the west.</figcaption></figure>
+  <figure><img src="img/sample_dsm.jpg" alt="The DSM shown as coloured, hill-shaded elevation"><figcaption><b>Digital Surface Model</b> Height of the top surface (crops, trees, roofs, ground), shaded from the north-west.</figcaption></figure>
 </div>
-<p>The orthomosaic was captured at 3.3 cm per pixel. The worked example segments it on a 10 cm working grid, so objects stay crown-sized, but measures each object's colour and texture from the full 3.3 cm pixels (<a href="concepts.html#feature-res">Part B, 5.3</a>). The DSM comes from the same photogrammetry run on a coarser grid; Lite Classify places it by its coordinates, so the two need not share a pixel size.</p>
+<p>The orthomosaic was captured at about 2.2 cm per pixel. The worked example segments it on a 5 cm working grid into small objects, about 2 m² each, so that crop rows and beds stay separate, and adds the DINOv3 appearance features (<a href="concepts.html#dinov2">Part B, 5.4</a>). Grass strips narrower than an object are recovered after classification by the greenness refinement (<a href="concepts.html#greenness">Part B, 5.9</a>). The DSM comes from the same photogrammetry run on a coarser grid; Lite Classify places it by its coordinates, so the two need not share a pixel size.</p>
 <figure>
-  <img src="img/sample_inset_native.jpg" alt="A 30 by 30 metre patch at full 3.3 cm resolution showing roofs and the crowns beside them" style="max-width:min(520px,100%)">
-  <figcaption><b>What 3.3 cm resolves.</b> A 30 × 30 m patch at full resolution: roof sheets, gutters and single fronds are visible. At this detail a segmenter outlines leaves, which is why the example segments at 10 cm.</figcaption>
+  <img src="img/sample_inset_native.jpg" alt="A 30 by 30 metre patch at full resolution showing crop rows and grass strips" style="max-width:min(520px,100%)">
+  <figcaption><b>What 2.2 cm resolves.</b> A 30 × 30 m patch at full resolution: single crop rows and the grass between beds are visible.</figcaption>
 </figure>
-<p class="small">The imagery is from a privately owned site and is not bundled with the program. You can follow every step on your own orthomosaic.</p>
+<p class="small">The sample data (orthomosaic, DSM and the saved workspace) <!-- TODO: link to the CAFS sample-data folder on Google Drive -->can be downloaded from the <a href="#" target="_blank" rel="noopener">sample-data folder on Google Drive</a>, so you can follow every step on the same data.</p>
 
 <h2 id="tour"><span class="num">4</span>A tour of the interface</h2>
 <p>The window has a menu bar, four tabs, a control column on the left of each tab, a large map viewer, and a console strip along the bottom that logs every step. All four viewers share one copy of the image, so switching tabs is instant even on large mosaics, and they share the zoom and pan: switching tabs keeps the same view. The bar above each map shows the image's native and working resolution, size, coordinate system and bit depth; below that, the map coordinates under the cursor.</p>
@@ -213,10 +216,10 @@
 
 <h3 id="tour-tabs">The four tabs</h3>
 <div class="cards">
-  <div class="card"><span class="k">Tab 1</span><h3>Load, View &amp; Segment</h3><p>Orthomosaic and DSM paths (or a link to make them from drone photos with WebODM), resampling, colour correction, the SLIC settings (with <em>Colour/texture at</em> for measuring finer than the segmentation grid), the engine, Run Segmentation, and boundary and elevation overlays.</p></div>
-  <div class="card"><span class="k">Tab 2</span><h3>Discover Classes</h3><p>Find Groups, a list of group cards, a scrolling gallery of the selected group's tiles, naming, merge, split, ignore and find-similar tools, a group overlay on the map, and Send Named Groups to Classification.</p></div>
-  <div class="card"><span class="k">Tab 3</span><h3>Classification</h3><p>Class list, the views (Blend, Segmented, Raw/Classified), selection, grow and merge tools, Check Class Separability, What to Label Next, Train and Classify, the minimum mapping unit, and export.</p></div>
-  <div class="card"><span class="k">Tab 4</span><h3>Accuracy Assessment</h3><p>Reference source, sampling design (simple random or stratified by map class), the point list and assignment tools, Run Accuracy Assessment, and the Iterations list of earlier runs.</p></div>
+  <div class="card"><span class="k">Tab 1</span><h3>Load, View &amp; Segment</h3><p>Orthomosaic and DSM paths (or a link to make them from drone photos with WebODM), resampling, colour correction, the SLIC settings (with <em>Colour/texture at</em> for measuring finer than the segmentation grid), the engine, Run Segmentation, boundary and elevation overlays, and <em>Process This Extent Only</em>.</p></div>
+  <div class="card"><span class="k">Tab 2</span><h3>Discover Classes</h3><p>Find Groups (with the DINOv2 or DINOv3 backbone), a list of group cards, a scrolling gallery of the selected group's tiles, naming, merge, split, ignore and find-similar tools, a group overlay on the map, and Send Named Groups to Classification.</p></div>
+  <div class="card"><span class="k">Tab 3</span><h3>Classification</h3><p>Class list, the Map View (Ortho, Segments or Classified, with training samples, segment boundaries and opacity), selection, grow and merge tools, Check Class Separability, What to Label Next, Train, Greenness Refinement, Classify All Segments, the minimum mapping unit, and export.</p></div>
+  <div class="card"><span class="k">Tab 4</span><h3>Accuracy Assessment</h3><p>Reference source (a ground-truth CSV, matched to your classes, or generated points), sampling design (simple random or stratified by map class), the point list with assign, unassign and delete tools, Save and Export Points, Run Accuracy Assessment, and the Iterations list of earlier runs.</p></div>
 </div>
 <p>Each tab is described control by control in <a href="workflow.html">Part C</a>.</p>
 
