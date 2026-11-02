@@ -42,6 +42,7 @@
         <li><a href="#load">Load the orthomosaic</a></li>
         <li><a href="#dsm">Add a DSM</a></li>
         <li><a href="#resample">Resample</a></li>
+        <li><a href="#extent">Process part of the image</a></li>
         <li><a href="#color">Colour correction</a></li>
         <li><a href="#elevation">Elevation overlay</a></li>
       </ol>
@@ -72,6 +73,7 @@
         <li><a href="#train">Train and classify</a></li>
         <li><a href="#views">Check with the views</a></li>
         <li><a href="#loop">The retraining loop</a></li>
+        <li><a href="#greenness">Greenness refinement</a></li>
         <li><a href="#mmu">Minimum mapping unit</a></li>
         <li><a href="#export">Export and save</a></li>
       </ol>
@@ -155,7 +157,16 @@
 </ol>
 <div class="warn"><p><strong>Resampling clears downstream work.</strong> The segmentation, Discover groups, the classification and all training samples are tied to the old pixel grid and are cleared. Your class names and colours are kept, and so are accuracy points (they are stored in map coordinates). Resample first, then segment.</p></div>
 
-<h3 id="color">6.5 Colour correction</h3>
+<h3 id="extent">6.5 Process only part of the image (optional)</h3>
+<p>To work on one area only, for example on a modest computer, during a demo, or when only part of the survey matters, zoom and pan the Tab 1 map to that area and press <span class="ui">Process This Extent Only</span> above the map. Only that part of the orthomosaic (and DSM) is read, at the current working resolution, and everything after it (segmentation, features, Discover, classification, export and accuracy) runs on it alone. The rest of the image stays visible around it at lower resolution, with a yellow outline around the processed area, so you can still scroll the whole survey for context.</p>
+<ul>
+  <li>Press the button again to go back to the whole image. Changing the area clears the segmentation, samples and classification, like a resample; classes, colours and accuracy points are kept.</li>
+  <li>The extent gets its own workspace folder (<code>&lt;name&gt;_extent_&lt;col&gt;_&lt;row&gt;_&lt;width&gt;x&lt;height&gt;_workspace</code>), so it never overwrites the whole-image workspace, and Load Workspace reopens the same area.</li>
+  <li>Accuracy points outside the extent are left out of the assessment, with a note in the console.</li>
+  <li>Resample still works inside the extent, so a small area can be processed at full resolution.</li>
+</ul>
+
+<h3 id="color">6.6 Colour correction</h3>
 <p>Click <span class="ui">Color Correction</span> to open the panel. <span class="ui">Auto-Correct</span> stretches the image so its darkest 2% and brightest 2% of values become black and white. The sliders adjust brightness, contrast, hue, saturation, temperature and the red, green and blue gains; <span class="ui">Reset Colors</span> undoes everything.</p>
 <div class="compare" data-label="Compare original colour with Auto-Correct">
   <img src="img/color_before.jpg" alt="Original colours">
@@ -164,7 +175,7 @@
 </div>
 <div class="note" style="margin-top:18px"><p><strong>What correction changes.</strong> The corrected image is what the segmenter sees, so it changes where boundaries fall. The features, however, are always measured on the original, uncorrected pixels. Correction helps segmentation on dull or hazy imagery but does not shift the values the classifier learns from.</p></div>
 
-<h3 id="elevation">6.6 Elevation overlay</h3>
+<h3 id="elevation">6.7 Elevation overlay</h3>
 <p>Tick <span class="ui">Show Elevation</span> above the viewer to lay the shaded DSM over the image, and set its <span class="ui">Opacity</span> (default 60%). Use it to confirm the DSM lines up with the image: roof edges and crown outlines should sit exactly on their shading.</p>
 <figure>
   <img src="img/hillshade_overlay.jpg" alt="Close-up of the shaded DSM over the image" style="max-width:min(640px,100%)">
@@ -206,6 +217,7 @@
   <li>Keep <span class="ui">Leave out segments at the image edge</span> ticked: their patches are partly empty and would group by that.</li>
   <li>Click <span class="ui">Find Groups</span>. The first run computes the DINOv2 appearance of every segment (the slow part, done once per segmentation) and then clusters. Later runs with other settings reuse it. <span class="ui">Cancel</span>, beside the button, stops the appearance step; press Find Groups to start it again.</li>
 </ol>
+<p><strong>Backbone (experimental DINOv3).</strong> Under Appearance, <span class="ui">Backbone</span> chooses the model that describes each patch. <span class="ui">DINOv2 ViT-S/14 (bundled)</span> is the default and needs nothing else. <span class="ui">DINOv3 ViT-S+/16 (your file)</span> is experimental and <em>not included</em>: request access from Meta, download the backbone file <code>dinov3_vits16plus_pretrain_lvd1689m-….pth</code> (about 115 MB) under Meta's DINOv3 License, and choose it when asked. Lite Classify checks the file, reads it where it is, and never copies it into a workspace. Switching backbone recomputes the appearance of every segment, rebuilds the groups, and means training a classifier that used deep features again. The workspace records which backbone made its features; don't compare or combine results from the two without saying so.</p>
 
 <h3 id="review">8.2 Review a group</h3>
 <p>The <span class="ui">Groups</span> list shows one card per group (<em>Group_01</em>, <em>Group_02</em>…, largest first) with its colour, segment count and a strip of sample tiles. Each tile shows the segment outlined in cyan in the middle third, with its surroundings. Filter it (<em>All, Unnamed, Named, Ignored</em>) and sort it (<em>Largest first</em>, or <em>Look-alikes together</em> to put similar groups side by side). Click a card to open it in the middle panel.</p>
@@ -269,7 +281,7 @@
 <ol class="steps">
   <li>Click <span class="ui">Selection Mode: OFF</span> to turn it on. Clicks now select instead of labelling; selected objects show in cyan.</li>
   <li>Click one object as a seed, then drag <span class="ui">Grow Tolerance</span> up. The selection spreads through touching objects similar to the seed.</li>
-  <li>Click <span class="ui">Assign Selection to Active Class</span>, or <span class="ui">Clear Selection</span>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes selection steps.</li>
+  <li>Click <span class="ui">Assign to Class</span> (assigns the selection to the active class), or <span class="ui">Clear</span>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes selection steps.</li>
 </ol>
 <details class="why"><summary>How the tolerance works, and why it can leak</summary>
 <p>Similarity uses six features: mean red, green, blue and brightness, GLCM contrast and homogeneity. Each is divided by its spread across the whole scene, and a neighbour joins if its distance to the seed's average is within <em>tolerance</em> × √6. Growth spreads through any touching object that passes, so a high tolerance can cross into different-looking ground. Start low and raise it in small steps.</p>
@@ -279,7 +291,7 @@
 <p>SLIC cuts large objects (a long roof, a big crown) into pieces, and each piece then has the wrong area and shape. Merge them so the classifier sees the real outline.</p>
 <ol class="steps">
   <li>With Selection Mode on, select the pieces (click, grow, or Ctrl+drag).</li>
-  <li>Click <span class="ui">Merge Selection into Object</span>. The pieces become one object, its features are recomputed, and its neighbours' context features are updated. If the pieces were samples of different classes, the console warns and the first class in the list wins.</li>
+  <li>Click <span class="ui">Merge</span>. The pieces become one object, its features are recomputed, and its neighbours' context features are updated. If the pieces were samples of different classes, the console warns and the first class in the list wins.</li>
 </ol>
 <div class="compare" data-label="Compare a roof before and after merging">
   <img src="img/merge_before.jpg" alt="A long roof split into many segments, selected in cyan">
@@ -320,7 +332,7 @@
 </ol>
 
 <h3 id="views">10.3 Check with the views</h3>
-<p>The view buttons switch what the viewer shows: <span class="ui">Raw Ortho</span> (it becomes the Raw/Classified toggle after classifying), <span class="ui">Segmented</span> (objects in their mean colour) and <span class="ui">Blend Overlay</span> (classes over the image). The opacity slider and switch control the overlay; the blend mode is <em>Multiply</em> (tints the image and keeps its texture, the default) or <em>Normal</em>. Flip between them often: errors that hide in one view jump out in another.</p>
+<p>In <span class="ui">Map View</span>, <span class="ui">Show</span> picks one of three views: <span class="ui">Ortho</span> (the image alone), <span class="ui">Segments</span> (objects in their mean colour) and <span class="ui">Classified</span> (the map, available after classifying). Two switches work in every view: <span class="ui">Training samples</span> and <span class="ui">Segment boundaries</span>. The opacity slider and switch fade the segments or classes over the image; the mode is <em>Normal</em> (plain transparency, at 100% the flat map, the default) or <em>Multiply</em> (tints the image and keeps its texture). Flip between them often: errors that hide in one view jump out in another.</p>
 <p>Drag across each pair below to compare the image with the worked example's map, at five places in the survey:</p>
 <div class="cgallery">
   <div class="compare" data-label="Compare orthomosaic and classified map">
@@ -341,16 +353,31 @@
 <h3 id="loop">10.4 The retraining loop</h3>
 <p>Retraining is the core of the method. <a href="concepts.html#retraining">Part B, 5.8</a> replays it on the example's own labels.</p>
 <ol class="steps">
-  <li><strong>Scan the whole map</strong> in Blend Overlay at 50–70% opacity. Note each <em>kind</em> of error: "dry stream bed read as Bare soil", "banana edge read as Natural canopy".</li>
+  <li><strong>Scan the whole map</strong> in the Classified view at 50–70% opacity (Multiply). Note each <em>kind</em> of error: "dry stream bed read as Bare soil", "banana edge read as Natural canopy".</li>
   <li><strong>Add a few correct samples of each kind</strong>, in different parts of the scene. Use What to Label Next for the cases the model itself is unsure about.</li>
   <li><strong>Train Classifier</strong>, then <strong>Classify All Segments</strong> again. All samples, old and new, are used.</li>
   <li><strong>Repeat</strong> until a round changes little. Then measure on Tab 4 instead of judging by eye.</li>
 </ol>
 
-<h3 id="mmu">10.5 Set a minimum mapping unit</h3>
+<h3 id="greenness">10.5 Refine two classes by greenness (optional)</h3>
+<p>Objects decide what kind of land an area is, but a feature narrower than an object, such as a grass row between bare beds or a strip along a ditch, is lost inside it. <span class="ui">Greenness Refinement (pixel level)</span> re-decides, pixel by pixel, the pixels mapped as two classes you pick, using their greenness (ExG, the same index as the <code>exg_mean</code> feature, averaged over a small window). Every other class stays as the objects decided.</p>
+<ol class="steps">
+  <li>Tick <span class="ui">Refine two classes by greenness (ExG)</span> before <span class="ui">Classify All Segments</span> (or after; the map updates either way).</li>
+  <li>Check <span class="ui">Green</span> and <span class="ui">Other</span>, for example Grass and Bare soil. They are guessed from the class names.</li>
+  <li>The <span class="ui">Cutoff</span> is set from your training samples the first time: the ExG value that best separates the two classes' samples. <span class="ui">From Samples</span> sets it again after you add samples. Lower it to keep faint or dying grass green; raise it to make rows thinner.</li>
+  <li><span class="ui">Window</span> is the square greenness is averaged over. 3×3 pixels is the default; a smaller window follows thin rows more tightly but is noisier.</li>
+</ol>
+<p>The two modes differ only in how the green class can turn into the other one. In both, pixels of the other class that read green become the green class one by one, which is what brings out the rows.</p>
+<ul>
+  <li><strong>Keep green segments whole</strong> (default): a green-class object turns to the other class only as a whole, when under a quarter of its pixels read green. Patchy or dying grass stays solid.</li>
+  <li><strong>Every pixel, both ways</strong>: every pixel at or below the cutoff becomes the other class. Edges are sharpest, but patchy grass gets holes.</li>
+</ul>
+<p>The refined map is what the view, the minimum mapping unit, the export and the accuracy assessment all use. The console reports how much of the map moved each way. The map is then no longer purely object-based for those two classes: rows can come out a little wider than they are, so treat the green class's area with care in row crops. The setting is saved with the workspace and with each iteration.</p>
+
+<h3 id="mmu">10.6 Set a minimum mapping unit</h3>
 <p>Under <span class="ui">Post-Classification Generalization</span>, set the <span class="ui">MMU</span> either in pixels (0–2,000) or as an area in m²; the two boxes stay in step with the working grid (at 10 cm, 1,000 px = 10 m²). Patches of one class smaller than this are absorbed by the class around them. The map updates when you release the slider or leave a box. The example used 0; see <a href="concepts.html#sieve">Part B, 5.9</a>.</p>
 
-<h3 id="export">10.6 Export and save</h3>
+<h3 id="export">10.7 Export and save</h3>
 <ol class="steps">
   <li>Click <span class="ui">Export Final Classified TIF</span>. The dialog suggests <code>&lt;name&gt;_classified.tif</code> in the workspace folder.</li>
   <li>Lite Classify writes a single-band GeoTIFF (value 1 = first class in the list, 2 = second, …, 0 = no data) with your colours embedded, plus a <code>.qml</code> style file of the same name for QGIS.</li>

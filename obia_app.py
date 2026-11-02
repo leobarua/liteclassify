@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QSizePolicy
 )
 from PySide6.QtGui import QImage, QColor, QPainter, QTextCursor, QIcon, QPixmap, QShortcut, QKeySequence, QAction, QDesktopServices
-from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QObject, QUrl, QTimer, QSettings
 
 from skimage.color import rgb2hsv, hsv2rgb
 from skimage.segmentation import find_boundaries
@@ -209,15 +209,18 @@ class SegmentationWorker(QObject):
 
 
 class DeepFeatureWorker(QObject):
-    """ Computes DINOv2 deep features for every segment off the UI thread (Discover tab). """
+    """ Computes deep features (DINOv2, or the user's DINOv3) for every segment off the UI
+    thread (Discover tab). """
     finished = Signal(object)
     failed = Signal(str)
     progress = Signal(int, int)
     cancelled = Signal()
 
-    def __init__(self, engine):
+    def __init__(self, engine, backbone=od.DEFAULT_BACKBONE, weights_path=None):
         super().__init__()
         self.engine = engine
+        self.backbone = backbone
+        self.weights_path = weights_path
         self.cancel_requested = False
 
     def run(self):
@@ -226,7 +229,8 @@ class DeepFeatureWorker(QObject):
             deep = od.compute_deep_features(e.original_ortho_data, e.segmented_image, e.valid_mask,
                                             e.effective_pixel_size or 0.1,
                                             progress=lambda d, n: self.progress.emit(d, n),
-                                            cancelled=lambda: self.cancel_requested)
+                                            cancelled=lambda: self.cancel_requested,
+                                            backbone=self.backbone, weights_path=self.weights_path)
             if deep is None:
                 self.cancelled.emit()
             else:
@@ -279,6 +283,98 @@ class EditClassDialog(QDialog):
             
     def get_values(self):
         return self.name_edit.text().strip(), self.chosen_color
+
+
+class ClassMatchDialog(QDialog):
+    """ Import Ground Truth CSV: choose, for each class name in the CSV, which workspace
+    class its points belong to, a new class of that name, or to leave them out. Exact
+    names are matched already; names that differ only in case, spacing or punctuation, or
+    by a likely typo, are suggested. """
+    NEW, SKIP = "__new__", "__skip__"
+
+    @staticmethod
+    def _norm(name):
+        return "".join(ch for ch in name.casefold() if ch.isalnum())
+
+    @classmethod
+    def suggest(cls, csv_name, workspace_names):
+        if csv_name in workspace_names:
+            return csv_name
+        norm = {cls._norm(w): w for w in workspace_names}
+        if cls._norm(csv_name) in norm:
+            return norm[cls._norm(csv_name)]
+        import difflib
+        close = difflib.get_close_matches(cls._norm(csv_name), list(norm), n=1, cutoff=0.75)
+        return norm[close[0]] if close else None
+
+    def __init__(self, csv_counts, workspace_names, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Match Classes")
+        self.setMinimumWidth(560)
+        self.workspace_names = list(workspace_names)
+        layout = QVBoxLayout(self)
+        intro = QLabel("Some class names in the CSV don't match this workspace. Choose where each one's "
+                       "points go. A new class gets no training samples; collect them in Tab 3 before "
+                       "classifying.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.table = QTableWidget(len(csv_counts), 3)
+        self.table.setHorizontalHeaderLabels(["Class in CSV", "Points", "Import as"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.combos = {}
+        for row, (name, n) in enumerate(sorted(csv_counts.items())):
+            self.table.setItem(row, 0, QTableWidgetItem(name))
+            self.table.setItem(row, 1, QTableWidgetItem(str(n)))
+            combo = QComboBox()
+            for w in self.workspace_names:
+                combo.addItem(w, w)
+            combo.addItem(f"New class \u201c{name}\u201d", self.NEW)
+            combo.addItem("Don't import these points", self.SKIP)
+            match = self.suggest(name, self.workspace_names)
+            combo.setCurrentIndex(combo.findData(match) if match is not None else combo.findData(self.NEW))
+            combo.currentIndexChanged.connect(self._update_missing)
+            self.table.setCellWidget(row, 2, combo)
+            self.combos[name] = combo
+        layout.addWidget(self.table)
+        self.missing_label = QLabel()
+        self.missing_label.setWordWrap(True)
+        self.missing_label.setStyleSheet("color: #d9a441;")
+        layout.addWidget(self.missing_label)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch(1)
+        ok_btn = QPushButton("Import")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+        self._update_missing()
+
+    def mapping(self):
+        """ {csv name: target class name or None (leave out)}, and the new class names. """
+        out, new = {}, []
+        for name, combo in self.combos.items():
+            v = combo.currentData()
+            if v == self.SKIP:
+                out[name] = None
+            elif v == self.NEW:
+                out[name] = name
+                new.append(name)
+            else:
+                out[name] = v
+        return out, new
+
+    def _update_missing(self, *_):
+        used = {v for v in self.mapping()[0].values() if v}
+        missing = [w for w in self.workspace_names if w not in used]
+        self.missing_label.setText("No points in this CSV for: " + ", ".join(missing) + "." if missing else "")
+        self.missing_label.setVisible(bool(missing))
 
 
 # --- Main window ---
@@ -472,7 +568,7 @@ class ObiaApp(QMainWindow):
         e = self.engine
         if getattr(e, "ortho_path", None) is None:
             return None
-        parts = [e.ortho_path, e.dsm_path, e.effective_pixel_size,
+        parts = [e.ortho_path, getattr(e, "extent", None), e.dsm_path, e.effective_pixel_size,
                  None if e.segmented_image is None else od.seg_fingerprint(e.segmented_image),
                  tuple((n, d["color"].name(), hash(frozenset(int(x) for x in d["training_segments"])))
                        for n, d in self.classes.items()),
@@ -965,6 +1061,16 @@ class ObiaApp(QMainWindow):
         self.elevation_opacity_slider.setMaximumWidth(120)
         self.elevation_opacity_slider.valueChanged.connect(self.refresh_load_view_overlay)
         overlay_bar.addWidget(self.elevation_opacity_slider)
+        self.extent_btn = QPushButton("Process This Extent Only")
+        self.extent_btn.setCheckable(True)
+        self.extent_btn.setEnabled(False)
+        self.extent_btn.setToolTip(
+            "Zoom and pan to the area you want, then press: only that part of the image is read "
+            "and processed (segmentation, features, classification, export). The rest stays "
+            "visible around it at lower resolution. Press again to go back to the whole image.")
+        self.extent_btn.setStyleSheet("QPushButton:checked { background-color: #e6a800; color: black; font-weight: 600; }")
+        self.extent_btn.toggled.connect(self.toggle_process_extent)
+        overlay_bar.addWidget(self.extent_btn)
         overlay_bar.addWidget(self._new_map_info(), 1)
         viewer_layout.addWidget(self._map_header([overlay_bar]))
 
@@ -989,7 +1095,7 @@ class ObiaApp(QMainWindow):
             self.dsm_path_edit.setText(file_path)
             self.load_dsm()
 
-    def load_ortho(self, out_shape=None):
+    def load_ortho(self, out_shape=None, extent=None):
         filepath = self.path_edit.text()
         if not os.path.exists(filepath):
             print("Error: Input file path not found.")
@@ -998,7 +1104,7 @@ class ObiaApp(QMainWindow):
             print(f"Loading image from: {filepath}...")
             QApplication.processEvents()
             try:
-                self.engine.load_raster(filepath, out_shape=out_shape)
+                self.engine.load_raster(filepath, out_shape=out_shape, extent=extent)
             finally:
                 # Whatever happened, the resample controls must describe the file now
                 # loaded (or none) and stay usable -- a failed load used to leave Apply
@@ -1006,10 +1112,9 @@ class ObiaApp(QMainWindow):
                 self._configure_resample_controls_for_new_source()
             if out_shape is None:   # a workspace grid is chosen, not forced by size
                 self._report_reduced_load()
+            self._sync_extent_button()
 
-            base_dir, file_name = os.path.split(filepath)
-            base_name, _ = os.path.splitext(file_name)
-            self.workspace_dir = os.path.join(base_dir, f"{base_name}_workspace")
+            self.workspace_dir = self._default_workspace_dir()
             # Not created here -- an empty <name>_workspace folder shouldn't appear
             # next to a tif just because it was loaded/browsed to (including while
             # relocating a moved raster during Load Workspace, which immediately
@@ -1182,58 +1287,62 @@ class ObiaApp(QMainWindow):
             eff = self.engine.effective_pixel_size if self.engine.native_crs_is_geographic else self.engine.effective_pixel_size * 100.0
             print(f"Resampled to {w}x{h} px (~{eff:.3f} {unit}).")
 
-            # Segmentation/classification were computed against the previous pixel
-            # grid -- none of it carries over to the new one (see resample_ortho's
-            # docstring for why this can't be preserved).
-            for data in self.classes.values():
-                data["training_segments"] = set()
-            self.classifier = None
-            self.classified_image_data = None
-            self.raw_classified_raster_ints = None
-            self.sieved_classified_raster_ints = None
-            self.base_seg_qimg = None
-            self.boundary_overlay_qimg = None
-            self.sample_class_map = None
-            self.selected_segments = set()
-            self.locked_selection = set()
-            self.current_seed_segments = set()
-            self.selection_undo_stack = []
-            self.selection_count_label.setText("Selected: 0 segments")
-            self.show_boundaries_check.setChecked(False)
-            self.show_boundaries_check.setEnabled(False)
-            self.current_view_mode = "segmented"
-            self.seg_view_btn.setChecked(True)
-            self.cls_view_btn.setChecked(False)
-            self.sync_classified_button_label()
-            self._sync_blend_availability()
-            self.update_list_widget_counts()
-            self.class_viewer.set_image(QImage())
-
-            self.reset_colors()
-            self.update_resample_preview_label()
-            self._configure_feature_res_control()
-            self._sync_segment_size()
-            self._sync_mmu_m2()
-            self.update_segmentation_plan_label()
-
-            # The image's pixel dimensions just changed -- show the whole thing rather
-            # than leaving the view at a zoom/pan level computed for the old size.
-            # (Accuracy points are stored in real-world CRS coordinates, not pixel
-            # indices, so they don't need clearing here -- they reproject onto the new
-            # grid automatically wherever they're drawn/hit-tested.)
-            self.viewer.fit_view()
-            self.acc_viewer.fit_view()
-
-            if had_dsm:
-                print("Reloading DSM to match the new orthomosaic resolution...")
-                self.load_dsm()
-            else:
-                self.update_dsm_status_label()
-                self.rebuild_hillshade_cache()
-
+            self._after_grid_change(had_dsm)
             print("Resample complete. Re-run segmentation to continue.")
         except Exception as e:
             print(f"Resample failed: {e}")
+
+    def _after_grid_change(self, had_dsm):
+        """ The working grid was re-read (resample, or a new processed extent): clear
+        everything computed on the old grid and bring the controls and views up to date. """
+        # Segmentation/classification were computed against the previous pixel
+        # grid -- none of it carries over to the new one (see resample_ortho's
+        # docstring for why this can't be preserved).
+        for data in self.classes.values():
+            data["training_segments"] = set()
+        self.classifier = None
+        self.classified_image_data = None
+        self.raw_classified_raster_ints = None
+        self.sieved_classified_raster_ints = None
+        self.base_seg_qimg = None
+        self.boundary_overlay_qimg = None
+        self.sample_class_map = None
+        self.selected_segments = set()
+        self.locked_selection = set()
+        self.current_seed_segments = set()
+        self.selection_undo_stack = []
+        self.selection_count_label.setText("Selected: 0 segments")
+        self.show_boundaries_check.setChecked(False)
+        self.show_boundaries_check.setEnabled(False)
+        self.current_view_mode = "segmented"
+        self.seg_view_btn.setChecked(True)
+        self.cls_view_btn.setChecked(False)
+        self.sync_classified_button_label()
+        self._sync_blend_availability()
+        self.update_list_widget_counts()
+        self.class_viewer.set_image(QImage())
+
+        self.reset_colors()
+        self.update_resample_preview_label()
+        self._configure_feature_res_control()
+        self._sync_segment_size()
+        self._sync_mmu_m2()
+        self.update_segmentation_plan_label()
+
+        # The image's pixel dimensions just changed -- show the whole thing rather
+        # than leaving the view at a zoom/pan level computed for the old size.
+        # (Accuracy points are stored in real-world CRS coordinates, not pixel
+        # indices, so they don't need clearing here -- they reproject onto the new
+        # grid automatically wherever they're drawn/hit-tested.)
+        self.viewer.fit_view()
+        self.acc_viewer.fit_view()
+
+        if had_dsm:
+            print("Reloading DSM to match the new orthomosaic resolution...")
+            self.load_dsm()
+        else:
+            self.update_dsm_status_label()
+            self.rebuild_hillshade_cache()
 
     def load_dsm(self):
         filepath = self.dsm_path_edit.text()
@@ -1304,6 +1413,122 @@ class ObiaApp(QMainWindow):
         self.engine.ortho_data = self.engine.original_ortho_data   # nothing writes into it in place
         self.reset_sliders()
         self.update_display_from_data()
+        self._apply_context()
+
+    # --- Process This Extent Only -------------------------------------------------------
+    def _default_workspace_dir(self):
+        """ <name>_workspace next to the ortho, or <name>_extent_<col>_<row>_<w>x<h>_workspace
+        for a processed extent, so work on an extent never overwrites the whole-image one. """
+        e = self.engine
+        base_dir, file_name = os.path.split(e.ortho_path or self.path_edit.text())
+        base_name, _ = os.path.splitext(file_name)
+        if e.extent is None:
+            return os.path.join(base_dir, f"{base_name}_workspace")
+        c, r, w, h = e.extent
+        return os.path.join(base_dir, f"{base_name}_extent_{c}_{r}_{w}x{h}_workspace")
+
+    def _apply_context(self):
+        """ The whole image (low resolution) around a processed extent, in every map. """
+        e = self.engine
+        rect = e.extent_in_grid() if e.extent is not None else None
+        pm = None
+        if rect is not None:
+            key = (e.ortho_path, e.file_width, e.file_height)
+            if getattr(self, "_context_key", None) != key or getattr(self, "_context_pixmap", None) is None:
+                try:
+                    rgba = e.read_context_overview()
+                except Exception as ex:
+                    print(f"Could not read the whole-image backdrop: {ex}")
+                    rgba = None
+                if rgba is not None:
+                    h, w = rgba.shape[:2]
+                    rgba = np.ascontiguousarray(rgba)
+                    self._context_pixmap = QPixmap.fromImage(
+                        QImage(rgba.data, w, h, 4 * w, QImage.Format_RGBA8888).copy())
+                    self._context_key = key
+                else:
+                    self._context_pixmap = None
+            pm = getattr(self, "_context_pixmap", None)
+        for v in (self.viewer, self.discover_viewer, self.class_viewer, self.acc_viewer):
+            v.set_context(pm if rect is not None else None, rect)
+
+    def _sync_extent_button(self):
+        e = self.engine
+        self.extent_btn.blockSignals(True)
+        self.extent_btn.setChecked(e.extent is not None)
+        self.extent_btn.blockSignals(False)
+        self.extent_btn.setEnabled(e.ortho_path is not None and e.ortho_data is not None)
+        if e.extent is None:
+            self.extent_btn.setText("Process This Extent Only")
+        else:
+            c, r, w, h = e.extent
+            self.extent_btn.setText(f"Extent Only ({w:,} × {h:,} px) ✕")
+
+    def toggle_process_extent(self, checked):
+        """ On: re-read only the part of the image in view (at the current resolution);
+        the rest stays visible around it. Off: back to the whole image. """
+        e = self.engine
+        if e.ortho_data is None or e.ortho_path is None:
+            self._sync_extent_button()
+            return
+        if checked:
+            r = self.viewer.visible_grid_rect()
+            c0, r0 = e.grid_to_native(r.left(), r.top())
+            c1, r1 = e.grid_to_native(r.right(), r.bottom())
+            extent = e.clamp_extent((c0, r0, c1 - c0, r1 - r0), e.file_width, e.file_height)
+            if extent is None:
+                print("Process This Extent Only: zoom in to the area to process first (the view "
+                      "shows the whole image, or too little of it).")
+                self._sync_extent_button()
+                return
+            what = f"only the area in view ({extent[2]:,} × {extent[3]:,} native px)"
+        else:
+            extent = None
+            what = "the whole image again"
+
+        has_downstream_work = (
+            e.segmented_image is not None or self.classified_image_data is not None
+            or any(d["training_segments"] for d in self.classes.values()))
+        if has_downstream_work:
+            reply = QMessageBox.question(
+                self, "Process This Extent Only",
+                f"Work on {what}? This clears the current segmentation, training samples and "
+                "classification (save the workspace first to keep them). Classes, colours and "
+                "accuracy points are kept.",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply != QMessageBox.Yes:
+                self._sync_extent_button()
+                return
+
+        # Keep the working resolution; for the whole image, only if it fits in memory.
+        f = (e.effective_pixel_size / e.native_pixel_size) if e.native_pixel_size else 1.0
+        f = max(1.0, f)
+        fw, fh = (extent[2], extent[3]) if extent is not None else (e.file_width, e.file_height)
+        out_shape = (max(1, round(fh / f)), max(1, round(fw / f)))
+        if extent is None and out_shape[0] * out_shape[1] > e.load_pixel_limit():
+            out_shape = None
+        had_dsm = bool(self.dsm_path_edit.text()) and os.path.exists(self.dsm_path_edit.text())
+        try:
+            print(f"Reading {what}...")
+            QApplication.processEvents()
+            e.load_raster(e.ortho_path, out_shape=out_shape, extent=extent)
+            if e.dsm_path is None and had_dsm:
+                e.load_dsm(self.dsm_path_edit.text())
+        except Exception as ex:
+            print(f"Could not read the extent: {ex}")
+            self._sync_extent_button()
+            return
+        self.workspace_dir = self._default_workspace_dir()
+        self._configure_resample_controls_for_new_source()
+        self._after_grid_change(had_dsm)
+        self._sync_extent_button()
+        h, w = e.ortho_data.shape[1:]
+        if e.extent is None:
+            print(f"Whole image: {w:,} × {h:,} px. Workspace: {self.workspace_dir}")
+        else:
+            print(f"Processing this extent only: {w:,} × {h:,} px at the working resolution. The rest of the "
+                  f"image is shown around it for context (yellow outline = processed area). "
+                  f"Workspace: {self.workspace_dir}")
 
     def reset_sliders(self):
         self.brightness_spinbox.setValue(0)
@@ -1523,7 +1748,8 @@ class ObiaApp(QMainWindow):
         bands and bit depth, DSM. Rebuilt only when the image, grid or DSM changes. """
         e = self.engine
         grid = None if e.ortho_data is None else tuple(e.ortho_data.shape[1:])
-        key = (e.ortho_path, e.effective_pixel_size, grid, getattr(e, "dsm_path", None), e.has_dsm)
+        key = (e.ortho_path, e.effective_pixel_size, grid, getattr(e, "dsm_path", None), e.has_dsm,
+               getattr(e, "extent", None))
         if key == self._map_info_key:
             return
         self._map_info_key = key
@@ -1535,7 +1761,7 @@ class ObiaApp(QMainWindow):
             epsg = crs.to_epsg() if crs is not None else None
             parts = [f"Native {self._ground_size(e.native_pixel_size)}",
                      f"working {self._ground_size(e.effective_pixel_size)}",
-                     f"{w:,} × {h:,} px",
+                     f"{w:,} × {h:,} px" + (" (extent only)" if getattr(e, "extent", None) else ""),
                      f"EPSG:{epsg}" if epsg else "custom CRS"]
             details = [f"Orthomosaic: {os.path.basename(e.ortho_path or '')}",
                        f"Native pixel size {self._ground_size(e.native_pixel_size)}, working "
@@ -1870,6 +2096,21 @@ class ObiaApp(QMainWindow):
         self.disc_use_feat_check = QCheckBox("Colour, texture, shape && height (classifier features)")
         self.disc_use_feat_check.setChecked(True)
         fg.addWidget(self.disc_use_deep_check)
+        bb_row = QHBoxLayout()
+        bb_row.setContentsMargins(22, 0, 0, 0)
+        bb_row.addWidget(QLabel("Backbone:"))
+        self.disc_backbone_combo = QComboBox()
+        for key, label in od.BACKBONES.items():
+            self.disc_backbone_combo.addItem(label, key)
+        self.disc_backbone_combo.setToolTip(
+            "The model that turns each patch into appearance features. DINOv2 comes with Lite Classify. "
+            "DINOv3 is experimental and not included: you download it from Meta yourself, under Meta's "
+            "DINOv3 License, and choose the file here.")
+        self.disc_backbone_combo.setEnabled(od.torch is not None)
+        bb_row.addWidget(self.disc_backbone_combo, 1)
+        fg.addLayout(bb_row)
+        self._set_backbone_combo(self._settings().value("discover/backbone", od.DEFAULT_BACKBONE))
+        self.disc_backbone_combo.currentIndexChanged.connect(self._on_backbone_changed)
         fg.addWidget(self.disc_use_feat_check)
         n_row = QHBoxLayout()
         n_row.addWidget(QLabel("Number of groups:"))
@@ -2169,6 +2410,107 @@ class ObiaApp(QMainWindow):
                 self._strip_cache = {}
                 self.refresh_discover_list()
 
+    # --- Discover: backbone (DINOv2 bundled, DINOv3 experimental from the user's own file) ---
+    @staticmethod
+    def _settings():
+        return QSettings(app_info.APP_AUTHOR, app_info.APP_NAME)
+
+    def _backbone(self):
+        return self.disc_backbone_combo.currentData() or od.DEFAULT_BACKBONE
+
+    def _set_backbone_combo(self, key):
+        """ Selects a backbone without the first-use questions (start-up, workspace load). """
+        i = self.disc_backbone_combo.findData(key)
+        self.disc_backbone_combo.blockSignals(True)
+        self.disc_backbone_combo.setCurrentIndex(i if i >= 0 else 0)
+        self.disc_backbone_combo.blockSignals(False)
+        self._backbone_prev = self._backbone()
+        self.disc_use_deep_check.setText(f"Appearance (deep features, {od.backbone_short(self._backbone())})")
+
+    def _on_backbone_changed(self, _index):
+        key = self._backbone()
+        if od.is_dinov3(key):
+            got = self._dinov3_weights(key)
+            if got is None:
+                self._set_backbone_combo(getattr(self, "_backbone_prev", od.DEFAULT_BACKBONE))
+                return
+            key = got[0]
+        self._set_backbone_combo(key)
+        self._settings().setValue("discover/backbone", key)
+        print(f"Discover: appearance backbone set to {od.backbone_label(key)}.")
+        if self.deep is not None and self.deep.get("backbone", od.DEFAULT_BACKBONE) != key:
+            print(f" -> This workspace's deep features were made with {od.backbone_short(self.deep.get('backbone'))}; "
+                  f"Find Groups will recompute them with {od.backbone_short(key)}.")
+
+    def _dinov3_weights(self, key, pick=False):
+        """ (backbone key, path) of the user's DINOv3 file for `key`, asking for it (with the
+        licence notice) when it isn't set, has moved, or pick=True. None if the user cancels.
+        The file is only read where it is: never copied, never downloaded. """
+        s = self._settings()
+        path = s.value(f"discover/weights/{key}", "")
+        if path and not pick:
+            try:
+                if od.check_dinov3_weights(path) == key:
+                    return key, path
+            except ValueError as e:
+                print(f"Discover: the saved DINOv3 file can't be used ({e}).")
+        box = QMessageBox(self)
+        box.setWindowTitle("DINOv3 (experimental)")
+        box.setIcon(QMessageBox.Information)
+        box.setTextFormat(Qt.RichText)
+        box.setText(f"<b>{od.backbone_short(key)} is not part of Lite Classify.</b> You use it with your own "
+                    f"download from Meta, under Meta's "
+                    f"<a href='{od.DINOV3_LICENSE_URL}'>DINOv3 License</a>, which restricts some uses.")
+        box.setInformativeText(
+            f"Request access and download the backbone file from Meta (see <a href='{od.DINOV3_DOWNLOAD_URL}'>"
+            "the DINOv3 page</a>): dinov3_vits16plus_pretrain_lvd1689m-….pth (ViT-S+/16, about 115 MB). "
+            "Lite Classify reads the file where it is; "
+            "it is not copied into workspaces.<br><br>Appearance features from DINOv3 differ from DINOv2's: "
+            "switching recomputes them, and groups and classifiers made with the other backbone are redone.")
+        choose = box.addButton("Choose File…", QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(choose)
+        box.exec()
+        if box.clickedButton() is not choose:
+            return None
+        start = os.path.dirname(path) if path else ""
+        while True:
+            fn, _ = QFileDialog.getOpenFileName(self, f"Choose the {od.backbone_short(key)} weights file", start,
+                                                "DINOv3 weights (*.pth);;All files (*)")
+            if not fn:
+                return None
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                got = od.check_dinov3_weights(fn)
+                err = None
+            except ValueError as e:
+                got, err = None, str(e)
+            finally:
+                QApplication.restoreOverrideCursor()
+            if err is None:
+                break
+            QMessageBox.warning(self, "DINOv3 (experimental)", err)
+            start = os.path.dirname(fn)
+        if got != key:
+            print(f"Discover: the chosen file is {od.backbone_short(got)}; using that.")
+        s.setValue(f"discover/weights/{got}", fn)
+        print(f"Discover: {od.backbone_short(got)} weights: {fn} (SHA-256 {od.file_sha256(fn)[:12]}…).")
+        return got, fn
+
+    def _drop_deep_dependents(self):
+        """ The classifier's deep_* columns and any classifier trained on them belong to the
+        old deep features: drop them so nothing mixes two backbones. """
+        cols = [c for c in self.engine.features_df.columns if c.startswith(self.engine.DEEP_PREFIX)] \
+            if self.engine.features_df is not None else []
+        if cols:
+            self.engine.features_df = self.engine.features_df.drop(columns=cols)
+        self.engine.deep_columns_backbone = None
+        if self.classifier is not None and any(c.startswith(self.engine.DEEP_PREFIX)
+                                               for c in (getattr(self, "classifier_features", None) or [])):
+            self.classifier = None
+            self.classifier_features = None
+            print(" -> The classifier used the old deep features; train it again.")
+
     # --- Discover: finding groups ---
     def discover_find_groups(self):
         if self.engine.segmented_image is None or self.engine.features_df is None:
@@ -2184,6 +2526,31 @@ class ObiaApp(QMainWindow):
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply != QMessageBox.Yes:
                 return
+        key = self._backbone()
+        if self.disc_use_deep_check.isChecked() and self.deep is not None \
+                and self.deep.get("backbone", od.DEFAULT_BACKBONE) != key:
+            old = od.backbone_short(self.deep.get("backbone"))
+            box = QMessageBox(self)
+            box.setWindowTitle("Change backbone")
+            box.setIcon(QMessageBox.Question)
+            box.setText(f"The appearance features here were made with {old}. Using {od.backbone_short(key)} "
+                        f"recomputes them for every segment.")
+            box.setInformativeText("The groups are rebuilt, and a classifier trained with deep features must be "
+                                   "trained again. Results from the two backbones should not be compared "
+                                   "or combined without saying so.")
+            go = box.addButton(f"Recompute with {od.backbone_short(key)}", QMessageBox.AcceptRole)
+            keep = box.addButton(f"Keep {old}", QMessageBox.ActionRole)
+            box.addButton(QMessageBox.Cancel)
+            box.setDefaultButton(go)
+            box.exec()
+            if box.clickedButton() is keep:
+                self._set_backbone_combo(self.deep.get("backbone", od.DEFAULT_BACKBONE))
+                self._settings().setValue("discover/backbone", self._backbone())
+            elif box.clickedButton() is go:
+                self.deep = None
+                self._drop_deep_dependents()
+            else:
+                return
         if self.disc_use_deep_check.isChecked() and self._deep_for_current() is None:
             if not self._confirm_cpu_deep_time():
                 return
@@ -2193,7 +2560,8 @@ class ObiaApp(QMainWindow):
         self._discover_group_now()
 
     # Seconds per segment for DINOv2 (two patches each), measured on the v1.0 builds:
-    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s.
+    # CPU ~0.11 s (8-core desktop), CUDA ~0.008 s. DINOv3 ViT-S+/16 measured within ~25 %
+    # of DINOv2 on CPU (fewer tokens, bigger blocks), so the same figure is a fair estimate.
     DEEP_S_PER_SEGMENT_CPU = 0.11
 
     def _confirm_cpu_deep_time(self):
@@ -2209,7 +2577,7 @@ class ObiaApp(QMainWindow):
         box = QMessageBox(self)
         box.setWindowTitle("Find Groups on the CPU")
         box.setIcon(QMessageBox.Information)
-        box.setText(f"Computing the appearance features (DINOv2) for {n:,} segments on the CPU will take "
+        box.setText(f"Computing the appearance features ({od.backbone_short(self._backbone())}) for {n:,} segments on the CPU will take "
                     f"about {self._fmt_duration(est)}.")
         box.setInformativeText("It is done once per segmentation and saved with the workspace. With an NVIDIA "
                                "GPU (GPU edition) it takes a few minutes. You can also group on colour, texture, "
@@ -2237,13 +2605,23 @@ class ObiaApp(QMainWindow):
         return f"{m} min" if m < 90 else f"{m // 60} h {m % 60:02d} min"
 
     def _start_deep_features(self):
+        key, wpath = self._backbone(), None
+        if od.is_dinov3(key):
+            got = self._dinov3_weights(key)
+            if got is None:
+                self.disc_status_label.setText("No DINOv3 file chosen. Choose DINOv2 as the backbone, "
+                                               "or press Find Groups and choose the file.")
+                return
+            key, wpath = got
+            self._set_backbone_combo(key)
         self.disc_find_btn.setEnabled(False)
         self.disc_find_btn.setText("Computing deep features…")
         n = len(self._segment_index()[0])
         self._deep_t0 = time.time()
-        print(f"Computing deep appearance features for {n} segments (DINOv2, {', '.join(f'{int(m)} m' for m in od.PATCH_SIZES_M)} patches)...")
+        print(f"Computing deep appearance features for {n} segments ({od.backbone_label(key)}, "
+              f"{', '.join(f'{int(m)} m' for m in od.PATCH_SIZES_M)} patches)...")
         self.deep_thread = QThread()
-        self.deep_worker = DeepFeatureWorker(self.engine)
+        self.deep_worker = DeepFeatureWorker(self.engine, key, wpath)
         self.deep_worker.moveToThread(self.deep_thread)
         self.deep_thread.started.connect(self.deep_worker.run)
         self.deep_worker.progress.connect(self._on_deep_progress)
@@ -2288,7 +2666,9 @@ class ObiaApp(QMainWindow):
     def _on_deep_finished(self, deep):
         self._deep_controls_idle()
         self.deep = deep
-        print(f" -> Deep features done on {deep['device'].upper()} in {deep['seconds']:.0f} s.")
+        self._drop_deep_dependents()
+        print(f" -> Deep features ({od.backbone_short(deep.get('backbone'))}) done on {deep['device'].upper()} "
+              f"in {deep['seconds']:.0f} s.")
         if self.workspace_dir:
             try:
                 self._ensure_workspace_dir()
@@ -2324,6 +2704,8 @@ class ObiaApp(QMainWindow):
         exclude = edge if self.disc_edge_check.isChecked() else None
         settings = {"use_deep": use_deep, "use_features": use_feat, "n_groups": n,
                     "exclude_edge": bool(exclude is not None), "fingerprint": fp}
+        if use_deep:
+            settings["backbone"] = deep.get("backbone", od.DEFAULT_BACKBONE)
         print(f"Grouping {len(ids):,} segments into {n} groups...")
         QApplication.processEvents()
         self.groups = od.GroupModel.find(ids, X, n, exclude=exclude, settings=settings)
@@ -2331,7 +2713,8 @@ class ObiaApp(QMainWindow):
         self._strip_cache = {}
         self.disc_multi = []
         left_out = int((self.groups.labels == "").sum())
-        basis = " + ".join(b for b, on in (("deep features", use_deep), ("classifier features", use_feat)) if on)
+        deep_name = f"deep features ({od.backbone_short(deep.get('backbone'))})" if use_deep else ""
+        basis = " + ".join(b for b, on in ((deep_name, use_deep), ("classifier features", use_feat)) if on)
         self.disc_status_label.setText(f"{len(ids):,} segments · {len(self.groups.groups)} groups · {basis}"
                                        + (f" · {left_out} edge segments left out" if left_out else ""))
         sugg = self.groups.merge_suggestions(3)
@@ -2948,7 +3331,7 @@ class ObiaApp(QMainWindow):
                 out.setdefault(info["name"], []).append(k)
         return out
 
-    def _ensure_class(self, name, color_hex=None):
+    def _ensure_class(self, name, color_hex=None, source="Discover"):
         if name in self.classes:
             return
         color = QColor(suggest_class_color(name, [d["color"].name() for d in self.classes.values()]))
@@ -2956,7 +3339,7 @@ class ObiaApp(QMainWindow):
         item = QListWidgetItem(f"{name} (0)")
         item.setBackground(color)
         self.class_list_widget.addItem(item)
-        print(f" -> New class '{name}' created from Discover.")
+        print(f" -> New class '{name}' created from {source}.")
 
     def send_groups_to_classification(self):
         if self.groups is None:
@@ -3046,7 +3429,14 @@ class ObiaApp(QMainWindow):
         if os.path.exists(dpath):
             try:
                 self.deep = od.load_deep_features(dpath)
-                print(" -> Deep features restored from the workspace cache.")
+                bb = self.deep.get("backbone", od.DEFAULT_BACKBONE)
+                print(f" -> Deep features ({od.backbone_label(bb)}) restored from the workspace cache.")
+                if bb != self._backbone():
+                    # follow the workspace: switching back is a choice, with its recompute prompt
+                    self._set_backbone_combo(bb)
+                    if od.is_dinov3(bb):
+                        print("    Recomputing them would need your DINOv3 file; grouping and the classifier "
+                              "use the cached features as they are.")
             except Exception as e:
                 print(f" -> Deep feature cache unreadable ({e}); it will be recomputed if needed.")
         if os.path.exists(gpath):
@@ -3078,6 +3468,10 @@ class ObiaApp(QMainWindow):
             deep = self._deep_for_current() if st.get("use_deep") else None
             if st.get("use_deep") and deep is None:
                 print(" -> Saved groups need deep features that are missing; press Find Groups to rebuild.")
+                return False
+            if deep is not None and st.get("backbone", od.DEFAULT_BACKBONE) != deep.get("backbone", od.DEFAULT_BACKBONE):
+                print(f" -> Saved groups were made with {od.backbone_short(st.get('backbone'))} features, but the "
+                      f"cached features are {od.backbone_short(deep.get('backbone'))}; press Find Groups to rebuild.")
                 return False
             ids = np.array([s for s in self._segment_index()[0] if s in self.engine.features_df.index])
             X = od.build_space(ids, self.engine.features_df, self.engine.active_feature_columns(include_deep=False),
@@ -3142,71 +3536,79 @@ class ObiaApp(QMainWindow):
         dsm_status_layout.addLayout(dsm_action_layout)
         dsm_status_group.setLayout(dsm_status_layout)
 
-        # --- Interactive Active Views: Show Training Samples toggle now lives here
-        # (moved off Class Management), and the view-mode buttons below have fixed,
-        # spec'd toggle logic -- see toggle_segmented_view/toggle_classified_view/
-        # toggle_blend_mode/_sync_blend_availability for the actual state machine.
-        view_group = QGroupBox("Interactive Active Views")
+        # --- Map view: Ortho / Segments / Classified (exclusive), overlay switches for
+        # training samples and segment boundaries, and the colour layer's opacity --
+        # see _set_class_view / _sync_blend_availability.
+        view_group = QGroupBox("Map View")
         view_layout = QVBoxLayout()
 
-        samples_row = QHBoxLayout()
-        samples_row.addWidget(QLabel("Show Training Samples"))
+        # What the map shows: one of three base views (exclusive), then two overlays that
+        # work in any view (training samples, segment boundaries), then how the coloured
+        # layer (segments or classes) sits over the ortho.
+        show_row = QHBoxLayout()
+        show_row.addWidget(QLabel("Show:"))
+        self.ortho_view_btn = QPushButton("Ortho")
+        self.ortho_view_btn.setToolTip("The orthomosaic alone")
+        self.seg_view_btn = QPushButton("Segments")
+        self.seg_view_btn.setToolTip("Each segment in its average colour")
+        self.cls_view_btn = QPushButton("Classified")
+        self.cls_view_btn.setToolTip("The classified map (after Classify All Segments)")
+        self.cls_view_btn.setEnabled(False)
+        self.view_btn_group = QButtonGroup(self)
+        self.view_btn_group.setExclusive(True)
+        for btn in (self.ortho_view_btn, self.seg_view_btn, self.cls_view_btn):
+            btn.setCheckable(True)
+            btn.setStyleSheet("QPushButton:checked { background-color: #2e6db4; color: white; font-weight: 600; }")
+            self.view_btn_group.addButton(btn)
+            show_row.addWidget(btn, 1)
+        self.seg_view_btn.setChecked(True)
+        self.ortho_view_btn.clicked.connect(lambda: self._set_class_view("raw"))
+        self.seg_view_btn.clicked.connect(lambda: self._set_class_view("segmented"))
+        self.cls_view_btn.clicked.connect(lambda: self._set_class_view("classified"))
+        view_layout.addLayout(show_row)
+
+        toggles_row = QHBoxLayout()
+        toggles_row.addWidget(QLabel("Training samples"))
         self.toggle_samples_btn = ToggleSwitch()
         self.toggle_samples_btn.setChecked(True)
         self.toggle_samples_btn.clicked.connect(self.toggle_samples_view)
-        samples_row.addWidget(self.toggle_samples_btn)
-        samples_row.addStretch()
-        view_layout.addLayout(samples_row)
+        toggles_row.addWidget(self.toggle_samples_btn)
+        toggles_row.addSpacing(16)
+        toggles_row.addWidget(QLabel("Segment boundaries"))
+        self.toggle_edges_btn = ToggleSwitch()
+        self.toggle_edges_btn.setChecked(False)
+        self.toggle_edges_btn.setToolTip("Outline every segment, in any view")
+        self.toggle_edges_btn.clicked.connect(lambda: self.update_classification_display())
+        toggles_row.addWidget(self.toggle_edges_btn)
+        toggles_row.addStretch()
+        view_layout.addLayout(toggles_row)
 
-        btn_layout = QHBoxLayout()
-        self.blend_toggle_btn = QPushButton("Blend Overlay")
-        self.blend_toggle_btn.setCheckable(True)
-        self.blend_toggle_btn.setEnabled(False)  # no classification yet -- nothing to blend
-        self.blend_toggle_btn.clicked.connect(self.toggle_blend_mode)
-
-        self.seg_view_btn = QPushButton("Segmented")
-        self.seg_view_btn.setCheckable(True)
-        self.seg_view_btn.setChecked(True)
-        self.seg_view_btn.clicked.connect(self.toggle_segmented_view)
-
-        self.cls_view_btn = QPushButton("Raw Ortho")
-        self.cls_view_btn.setCheckable(True)
-        self.cls_view_btn.clicked.connect(self.toggle_classified_view)
-
-        btn_layout.addWidget(self.blend_toggle_btn)
-        btn_layout.addWidget(self.seg_view_btn)
-        btn_layout.addWidget(self.cls_view_btn)
-        view_layout.addLayout(btn_layout)
-
-        # --- Making the Opacity Slider permanently visible ---
         self.opacity_container = QWidget()
         opacity_lay = QHBoxLayout(self.opacity_container)
+        opacity_lay.setContentsMargins(0, 0, 0, 0)
         opacity_lay.addWidget(QLabel("Opacity:"))
 
         self.opacity_slider = QSlider(Qt.Horizontal)
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(100)
-        self.opacity_slider.setEnabled(False) # Default disabled until blend mode active
-
+        self.opacity_slider.setToolTip("How strongly the segments or classes cover the ortho")
         # Applies when the slider is released (setTracking(False)), not on every step.
         self.opacity_slider.setTracking(False)
         self.opacity_slider.valueChanged.connect(self.update_classification_display)
-        # On/off switch: hides the classified layer (opacity 0) or restores the slider value.
+        # On/off switch: hides the coloured layer (opacity 0) or restores the slider value.
         self.opacity_toggle = ToggleSwitch()
         self.opacity_toggle.setChecked(True)
-        self.opacity_toggle.setEnabled(False)
-        self.opacity_toggle.setToolTip("Show / hide the classified layer over the ortho")
+        self.opacity_toggle.setToolTip("Show / hide the segments or classes over the ortho")
         self.opacity_toggle.clicked.connect(self.update_classification_display)
-        # Kept for code that still refers to it; hidden.
+        # Kept for code that still refers to it.
         self.opacity_spinbox = self.opacity_toggle
 
-        # How the classified layer mixes with the ortho in Blend Overlay: Multiply tints the
-        # ortho (texture stays visible), Normal is plain transparency (truer colours).
+        # How the coloured layer mixes with the ortho: Normal is plain transparency (at 100%
+        # the flat map), Multiply tints the ortho so its texture stays visible.
         self.blend_mode_combo = QComboBox()
-        self.blend_mode_combo.addItems(["Multiply", "Normal"])
-        self.blend_mode_combo.setToolTip("Multiply: the class colour tints the ortho, keeping its texture. "
-                                         "Normal: plain transparency -- truer colours, less texture.")
-        self.blend_mode_combo.setEnabled(False)
+        self.blend_mode_combo.addItems(["Normal", "Multiply"])
+        self.blend_mode_combo.setToolTip("Normal: plain transparency -- at 100% the flat map.\n"
+                                         "Multiply: the colour tints the ortho, keeping its texture.")
         self.blend_mode_combo.currentIndexChanged.connect(lambda _: self.update_classification_display())
 
         opacity_lay.addWidget(self.opacity_slider)
@@ -3214,6 +3616,79 @@ class ObiaApp(QMainWindow):
         opacity_lay.addWidget(self.opacity_toggle)
         view_layout.addWidget(self.opacity_container)
         view_group.setLayout(view_layout)
+
+        # --- Greenness refinement: pixel-level bare/grass (or any two classes) pass ---
+        refine_group = QGroupBox("Greenness Refinement (pixel level)")
+        refine_layout = QVBoxLayout()
+        self.refine_check = QCheckBox("Refine two classes by greenness (ExG)")
+        self.refine_check.setToolTip(
+            "After classification, pixels mapped as either of the two classes below are "
+            "re-decided by their greenness (ExG, averaged over the window). Brings out rows and "
+            "strips narrower than a segment. Other classes are not changed.")
+        refine_layout.addWidget(self.refine_check)
+        mode_row = QHBoxLayout()
+        self.refine_mode_combo = QComboBox()
+        self.refine_mode_combo.addItem("Keep green segments whole", "hybrid")
+        self.refine_mode_combo.addItem("Every pixel, both ways", "pixel")
+        self.refine_mode_combo.setToolTip(
+            "Keep green segments whole: green pixels in the other class become the green class, "
+            "but a green-class segment only turns to the other class as a whole, when under a "
+            "quarter of its pixels are green -- patchy or dying grass stays solid.\n"
+            "Every pixel, both ways: each pixel above the cutoff is the green class and each at "
+            "or below it the other class -- sharpest edges, but patchy grass gets holes.")
+        mode_row.addWidget(QLabel("Mode:"))
+        mode_row.addWidget(self.refine_mode_combo, 1)
+        refine_layout.addLayout(mode_row)
+        pair_row = QHBoxLayout()
+        self.refine_green_combo = QComboBox()
+        self.refine_other_combo = QComboBox()
+        self.refine_green_combo.setToolTip("The greener class, e.g. grass")
+        self.refine_other_combo.setToolTip("The less green class, e.g. bare soil")
+        pair_row.addWidget(QLabel("Green:"))
+        pair_row.addWidget(self.refine_green_combo, 1)
+        pair_row.addWidget(QLabel("Other:"))
+        pair_row.addWidget(self.refine_other_combo, 1)
+        refine_layout.addLayout(pair_row)
+        cut_row = QHBoxLayout()
+        self.refine_cutoff_spin = QDoubleSpinBox()
+        self.refine_cutoff_spin.setDecimals(3)
+        self.refine_cutoff_spin.setRange(-1.0, 1.0)
+        self.refine_cutoff_spin.setSingleStep(0.005)
+        self.refine_cutoff_spin.setValue(0.040)
+        self.refine_cutoff_spin.setToolTip("ExG above this is the green class. Lower it to keep "
+                                           "faint or dying grass green; raise it to make rows thinner.")
+        self.refine_from_samples_btn = QPushButton("From Samples")
+        self.refine_from_samples_btn.setToolTip("Set the cutoff that best separates the training "
+                                                "samples of the two classes")
+        self.refine_window_combo = QComboBox()
+        for n in (1, 3, 5, 7, 9):
+            self.refine_window_combo.addItem(f"{n}×{n} px", n)
+        self.refine_window_combo.setCurrentIndex(1)
+        self.refine_window_combo.setToolTip("Greenness is averaged over this square around each pixel. "
+                                            "Smaller follows thin rows more tightly but is noisier.")
+        cut_row.addWidget(QLabel("Cutoff:"))
+        cut_row.addWidget(self.refine_cutoff_spin)
+        cut_row.addWidget(self.refine_from_samples_btn)
+        cut_row.addWidget(QLabel("Window:"))
+        cut_row.addWidget(self.refine_window_combo)
+        refine_layout.addLayout(cut_row)
+        self.refine_status_label = QLabel("")
+        self.refine_status_label.setWordWrap(True)
+        self.refine_status_label.setStyleSheet("color: gray;")
+        refine_layout.addWidget(self.refine_status_label)
+        self.refine_status_label.hide()   # the console carries the figures
+        refine_group.setLayout(refine_layout)
+        self.refine_check.toggled.connect(self._refine_controls_changed)
+        self.refine_green_combo.activated.connect(self._refine_controls_changed)
+        self.refine_other_combo.activated.connect(self._refine_controls_changed)
+        self.refine_window_combo.activated.connect(self._refine_controls_changed)
+        self.refine_mode_combo.activated.connect(self._refine_controls_changed)
+        self._refine_cutoff_set = False   # becomes True once From Samples ran or the user typed one
+        self.refine_cutoff_spin.editingFinished.connect(lambda: setattr(self, "_refine_cutoff_set", True))
+        self.refine_cutoff_spin.editingFinished.connect(self._refine_controls_changed)
+        self.refine_from_samples_btn.clicked.connect(self.refine_cutoff_from_samples)
+        self._refine_cache = None
+        self._refine_sync_enabled()
 
         gen_group = QGroupBox("Post-Classification Generalization")
         gen_layout = QHBoxLayout()
@@ -3265,6 +3740,9 @@ class ObiaApp(QMainWindow):
         class_layout.addLayout(add_class_layout)
 
         self.class_list_widget = QListWidget()
+        _m = self.class_list_widget.model()
+        for _sig in (_m.rowsInserted, _m.rowsRemoved, _m.modelReset):
+            _sig.connect(lambda *_: self._refresh_refine_combos())
         self.class_list_widget.setSelectionMode(QListWidget.ExtendedSelection)
         self.class_list_widget.setItemDelegate(ClassListDelegate(self.class_list_widget))
         self.class_list_widget.itemSelectionChanged.connect(self.on_class_selection_changed)
@@ -3309,7 +3787,7 @@ class ObiaApp(QMainWindow):
         train_outer.addLayout(helper_row)
         self.use_deep_check = QCheckBox("Use deep appearance features")
         self.use_deep_check.setToolTip(
-            "Also give the classifier 20 appearance features from the DINOv2 deep features (10 principal "
+            "Also give the classifier 20 appearance features from the deep features (10 principal "
             "components each of the 5 m and 10 m patches around every segment). Uses the deep features "
             "computed in Discover Classes (Find Groups with Appearance ticked).")
         train_outer.addWidget(self.use_deep_check)
@@ -3317,11 +3795,17 @@ class ObiaApp(QMainWindow):
         train_btn = QPushButton("Train Classifier")
         train_btn.setMinimumHeight(44)
         train_btn.clicked.connect(self.train_classifier)
-        classify_btn = QPushButton("Classify All Segments")
-        classify_btn.setMinimumHeight(44)
-        classify_btn.clicked.connect(self.classify_all)
+        # Classify sits below Greenness Refinement (see the column layout), so the
+        # refinement is set up before the map is made.
+        self.classify_btn = QPushButton("Classify All Segments")
+        self.classify_btn.setMinimumHeight(44)
+        self.classify_btn.setStyleSheet(
+            "QPushButton { background-color: #e67e22; color: white; font-weight: 600; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #ca6f1e; }"
+            "QPushButton:disabled { background-color: #f0c39b; color: #fbeee2; }"
+        )
+        self.classify_btn.clicked.connect(self.classify_all)
         train_layout.addWidget(train_btn)
-        train_layout.addWidget(classify_btn)
         train_outer.addLayout(train_layout)
         train_group.setLayout(train_outer)
 
@@ -3362,17 +3846,19 @@ class ObiaApp(QMainWindow):
         tol_layout.addWidget(self.grow_tolerance_spinbox)
         selection_layout.addLayout(tol_layout)
 
-        clear_sel_btn = QPushButton("Clear Selection")
+        sel_btn_row = QHBoxLayout()
+        clear_sel_btn = QPushButton("Clear")
+        clear_sel_btn.setToolTip("Clear Selection")
         clear_sel_btn.clicked.connect(self.clear_segment_selection)
-        selection_layout.addWidget(clear_sel_btn)
-
-        assign_sel_btn = QPushButton("Assign Selection to Active Class")
+        assign_sel_btn = QPushButton("Assign to Class")
+        assign_sel_btn.setToolTip("Assign Selection to Active Class")
         assign_sel_btn.clicked.connect(self.assign_selection_to_class)
-        selection_layout.addWidget(assign_sel_btn)
-
-        merge_sel_btn = QPushButton("Merge Selection into Object")
+        merge_sel_btn = QPushButton("Merge")
+        merge_sel_btn.setToolTip("Merge Selection into Object")
         merge_sel_btn.clicked.connect(self.merge_selection_into_object)
-        selection_layout.addWidget(merge_sel_btn)
+        for b in (clear_sel_btn, assign_sel_btn, merge_sel_btn):
+            sel_btn_row.addWidget(b)
+        selection_layout.addLayout(sel_btn_row)
 
         selection_group.setLayout(selection_layout)
 
@@ -3387,6 +3873,8 @@ class ObiaApp(QMainWindow):
         col2_layout.addWidget(view_group)
         col2_layout.addWidget(selection_group)
         col2_layout.addWidget(train_group)
+        col2_layout.addWidget(refine_group)
+        col2_layout.addWidget(self.classify_btn)
         col2_layout.addWidget(gen_group)
         col2_layout.addWidget(self.export_btn)
         col2_layout.addStretch()
@@ -3553,6 +4041,13 @@ class ObiaApp(QMainWindow):
         )
         self.acc_save_progress_btn.clicked.connect(self.save_accuracy_progress)
         col2_layout.addWidget(self.acc_save_progress_btn)
+        self.acc_export_points_btn = QPushButton("Export Points…")
+        self.acc_export_points_btn.setToolTip(
+            "Writes the labelled points (coordinates and your reference class only, not the map's "
+            "predictions) to a CSV. Another Lite Classify user can load it with Import Ground Truth "
+            "CSV to assess their map against the same points; the class names must match.")
+        self.acc_export_points_btn.clicked.connect(self.export_accuracy_points)
+        col2_layout.addWidget(self.acc_export_points_btn)
 
         self.acc_gen_group = QGroupBox("Random Point Generation")
         gen_layout = QVBoxLayout()
@@ -3738,20 +4233,57 @@ class ObiaApp(QMainWindow):
         if self.engine.ortho_data is None:
             print("Error: Load an orthomosaic first before importing ground-truth points.")
             return
-        if not self.classes:
-            print("Error: Define at least one class in Tab 3 before importing ground-truth points.")
-            return
         try:
-            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()))
-            self.acc_csv_path_edit.setText(file_path)
-            trailing = " — no expert labeling needed for this run" if not self.acc_supp_expert_check.isChecked() else ""
-            self.acc_csv_summary_label.setText(
-                f"{n} points loaded from CSV.\nAll class names matched your Tab 3 class list.\nReady to run{trailing}."
-            )
-            print(f"Imported {n} ground-truth point(s) from CSV.")
-            self.refresh_accuracy_ui()
+            df = self.engine.read_accuracy_points_csv(file_path)
         except Exception as e:
             QMessageBox.critical(self, "CSV Import Failed", str(e))
+            self.sync_accuracy_gt_controls()
+            return
+        counts = df["class"].value_counts().to_dict()
+        names = list(self.classes.keys())
+        class_map, new = None, []
+        if any(c not in self.classes for c in counts):
+            dlg = ClassMatchDialog(counts, names, self)
+            if dlg.exec() != QDialog.Accepted:
+                print("CSV import cancelled.")
+                self.sync_accuracy_gt_controls()
+                return
+            class_map, new = dlg.mapping()
+        try:
+            for name in new:
+                self._ensure_class(name, source="the ground-truth CSV")
+            if new:
+                self.rebuild_sample_class_map()
+            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()), class_map=class_map)
+        except Exception as e:
+            QMessageBox.critical(self, "CSV Import Failed", str(e))
+            self.sync_accuracy_gt_controls()
+            return
+        targets = set(counts) if class_map is None else {v for v in class_map.values() if v}
+        skipped = [c for c, v in (class_map or {}).items() if v is None]
+        renamed = {c: v for c, v in (class_map or {}).items() if v and v != c}
+        no_points = [c for c in names if c not in targets]
+        lines = [f"{n} points loaded from CSV."]
+        if renamed:
+            lines.append("Matched: " + ", ".join(f"{c} → {v}" for c, v in renamed.items()) + ".")
+        if new:
+            lines.append("New class(es), no training samples yet: " + ", ".join(new) + ".")
+        if skipped:
+            lines.append(f"Left out: {sum(counts[c] for c in skipped)} point(s) of " + ", ".join(skipped) + ".")
+        if no_points:
+            lines.append("No points for: " + ", ".join(no_points) + ".")
+        trailing = " — no expert labeling needed for this run" if not self.acc_supp_expert_check.isChecked() else ""
+        lines.append(f"Ready to run{trailing}.")
+        self.acc_csv_path_edit.setText(file_path)
+        self.acc_csv_summary_label.setText("\n".join(lines))
+        print(f"Imported {n} ground-truth point(s) from CSV. " + " ".join(lines[1:-1]))
+        if no_points:
+            QMessageBox.information(
+                self, "CSV Import",
+                f"{n} points imported. The CSV has no points for: {', '.join(no_points)}.\n\n"
+                "Those classes won't be assessed unless you add points for them (Random Point "
+                "Generation or right-click Add Point).")
+        self.refresh_accuracy_ui()
         self.sync_accuracy_gt_controls()
 
     def generate_accuracy_points(self):
@@ -4190,6 +4722,25 @@ class ObiaApp(QMainWindow):
         if self.workspace_dir:
             os.makedirs(self.workspace_dir, exist_ok=True)
 
+    def export_accuracy_points(self):
+        gdf = self.engine.accuracy_points_gdf
+        n_lab = 0 if gdf is None else int(gdf['reference_class'].notna().sum())
+        if n_lab == 0:
+            print("Export Points: no labelled accuracy points yet.")
+            return
+        start = os.path.join(self.workspace_dir or "", "accuracy_points.csv")
+        path, _ = QFileDialog.getSaveFileName(self, "Export Accuracy Points", start, "CSV Files (*.csv)")
+        if not path:
+            return
+        try:
+            n = self.engine.export_accuracy_points_csv(path)
+        except Exception as e:
+            QMessageBox.critical(self, "Export Points", f"Could not write the CSV:\n{e}")
+            return
+        skipped = len(gdf) - n
+        print(f"Exported {n} labelled accuracy point(s) to {path}"
+              + (f" ({skipped} unlabelled left out)." if skipped else "."))
+
     def save_accuracy_progress(self):
         """ Lightweight manual save for accuracy points only -- writes
         accuracy_points.gpkg (and, if a session.json already exists, refreshes its
@@ -4462,7 +5013,9 @@ class ObiaApp(QMainWindow):
                        if self.engine.accuracy_strata else None),
             "lut": self._class_map_lut(),
             "sieve": int(self.gen_spinbox.value()),
+            "refine": self._refine_settings(),
             "use_deep": bool(self.use_deep_check.isChecked()),
+            "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
             "seg_shape": list(self.engine.segmented_image.shape),
             "image": image,
         }
@@ -4637,6 +5190,7 @@ class ObiaApp(QMainWindow):
         # classifier settings, then the model (same samples -> same forest) and the map
         self.use_deep_check.setChecked(it["use_deep"])
         self.gen_spinbox.setValue(it["sieve"])
+        self._set_refine_settings(it.get("refine"))
         self.classifier = None
         self.classifier_features = None
         if sum(1 for d in self.classes.values() if d["training_segments"]) >= 2:
@@ -4714,61 +5268,35 @@ class ObiaApp(QMainWindow):
         return acc_gdf
 
     def sync_classified_button_label(self):
-        """ "Raw Ortho" until a classification exists, then "Classified Map" -- see
-        the toggle_*_view methods below for what each state actually does. """
-        has_classification = self.classified_image_data is not None
-        self.cls_view_btn.setText("Classified Map" if has_classification else "Raw Ortho")
+        """ Classified is offered once a classification exists. """
+        self.cls_view_btn.setEnabled(self.classified_image_data is not None)
 
     def _sync_blend_availability(self):
-        """ Blend Overlay is only ever selectable when a classification exists AND the
-        Classified Map / Raw Ortho button is the active view -- toggling Segmented on
-        always disables it, and it snaps back off (with the opacity controls) the
-        moment it becomes unselectable, so it never gets left on in a state where it
-        has nothing to blend. """
-        has_classification = self.classified_image_data is not None
-        blend_selectable = has_classification and self.cls_view_btn.isChecked() and not self.seg_view_btn.isChecked()
-        self.blend_toggle_btn.setEnabled(blend_selectable)
-        if not blend_selectable:
-            self.blend_toggle_btn.setChecked(False)
-            self.opacity_slider.setEnabled(False)
-            self.opacity_spinbox.setEnabled(False)
-            self.blend_mode_combo.setEnabled(False)
+        """ Keep the view buttons on the current view, and the opacity controls on only
+        when there is a coloured layer (segments or classes) to fade. """
+        mode = self.current_view_mode
+        if mode == "classified" and self.classified_image_data is None:
+            mode = self.current_view_mode = "raw"
+        btn = {"raw": self.ortho_view_btn, "segmented": self.seg_view_btn,
+               "classified": self.cls_view_btn}.get(mode, self.ortho_view_btn)
+        btn.setChecked(True)
+        on = mode in ("segmented", "classified")
+        for w in (self.opacity_slider, self.opacity_toggle, self.blend_mode_combo):
+            w.setEnabled(on)
 
-    def toggle_blend_mode(self):
-        is_checked = self.blend_toggle_btn.isChecked()
-        self.opacity_slider.setEnabled(is_checked)
-        self.opacity_spinbox.setEnabled(is_checked)
-        self.blend_mode_combo.setEnabled(is_checked)
+    def _set_class_view(self, mode):
+        if mode == "classified" and self.classified_image_data is None:
+            print("Notice: No classification yet -- run Classify All Segments first.")
+            mode = "raw"
+        self.current_view_mode = mode
+        self._sync_blend_availability()
         self.update_classification_display()
 
     def toggle_segmented_view(self):
-        """ Segmented and Classified/Raw-Ortho are independently checkable (not a
-        QButtonGroup radio pair) so Classified/Raw-Ortho can be toggled off by itself
-        to fall back to the raw view -- see toggle_classified_view. Selecting Segmented
-        always wins over the other button, and always kills Blend Overlay. """
-        if self.seg_view_btn.isChecked():
-            self.cls_view_btn.setChecked(False)
-            self.current_view_mode = "segmented"
-        else:
-            self.current_view_mode = "classified" if (self.cls_view_btn.isChecked() and self.classified_image_data is not None) else "raw"
-        self._sync_blend_availability()
-        self.update_classification_display()
+        self._set_class_view("segmented" if self.seg_view_btn.isChecked() else "raw")
 
     def toggle_classified_view(self):
-        """ Unlike Segmented, this button can be toggled OFF by itself (it's not
-        exclusively grouped) -- doing so reveals the raw ortho (with its segment-
-        boundary outline overlay), independent of whatever Segmented is doing. """
-        if self.cls_view_btn.isChecked():
-            self.seg_view_btn.setChecked(False)
-            if self.classified_image_data is None:
-                print("Notice: No classification result calculated yet. Displaying raw image instead.")
-                self.current_view_mode = "raw"
-            else:
-                self.current_view_mode = "classified"
-        else:
-            self.current_view_mode = "raw"
-        self._sync_blend_availability()
-        self.update_classification_display()
+        self._set_class_view("classified" if self.cls_view_btn.isChecked() else "raw")
 
     def setup_classification_view(self):
         """ After a fresh segmentation: Classification shows the segmented view (the
@@ -4865,6 +5393,11 @@ class ObiaApp(QMainWindow):
         for i, n in enumerate(old_order, start=1):
             target = name_map.get(n, n)
             lut[i] = new_index.get(target, 0) if target else 0
+        refine = self._refine_settings()
+        for k in ("green", "other"):
+            if refine[k] in name_map:
+                refine[k] = name_map[refine[k]]
+        self._set_refine_settings(refine)
         self.raw_classified_raster_ints = lut[self.raw_classified_raster_ints]
         if self.sieved_classified_raster_ints is not None:
             self.sieved_classified_raster_ints = lut[self.sieved_classified_raster_ints]
@@ -5281,6 +5814,7 @@ class ObiaApp(QMainWindow):
             if name in self.classes:
                 count = len(self.classes[name]["training_segments"])
                 item.setText(f"{name} ({count})")
+        self._refresh_refine_combos()
 
     def update_classification_display(self):
         """ The Classification map as layers over the shared ortho pixmap: the view layer
@@ -5292,17 +5826,15 @@ class ObiaApp(QMainWindow):
         v = self.class_viewer
         v.set_base_image_cached(self.raw_pixmap, grid_size=self.raw_grid)
         mode = self.current_view_mode
-        if mode == "segmented":
-            v.set_layer("view", self.base_seg_qimg, 1.0, z=1)
+        opacity = self.opacity_slider.value() / 100.0 if self.opacity_toggle.isChecked() else 0.0
+        multiply = self.blend_mode_combo.currentText() == "Multiply"
+        if mode == "segmented" and self.base_seg_qimg is not None:
+            v.set_layer("view", self.base_seg_qimg, opacity, z=1, multiply=multiply)
         elif mode == "classified" and self.classified_qimg is not None:
-            opacity = 1.0
-            if self.blend_toggle_btn.isChecked():
-                opacity = self.opacity_slider.value() / 100.0 if self.opacity_toggle.isChecked() else 0.0
-            multiply = self.blend_toggle_btn.isChecked() and self.blend_mode_combo.currentText() == "Multiply"
             v.set_layer("view", self.classified_qimg, opacity, z=1, multiply=multiply)
         else:
             v.set_layer("view", None)
-        v.set_layer("edges", self.boundary_overlay_qimg if mode == "raw" else None, 1.0, z=2)
+        v.set_layer("edges", self.boundary_overlay_qimg if self.toggle_edges_btn.isChecked() else None, 1.0, z=2)
         if self._samples_item is None or v.layer("samples") is not self._samples_item:
             arr = self._samples_lut()[self._seg_disp()[1]]
             self._samples_item = v.set_array_layer("samples", arr, z=3)
@@ -5401,10 +5933,14 @@ class ObiaApp(QMainWindow):
                   "'Use deep appearance features').")
             return False
         have = [c for c in self.engine.features_df.columns if c.startswith(self.engine.DEEP_PREFIX)]
-        if not have or self.engine.features_df[have].abs().sum().sum() == 0:
-            print("Adding deep appearance features (PCA of DINOv2 5 m and 10 m patches) to the classifier features...")
+        bb = deep.get("backbone", od.DEFAULT_BACKBONE)
+        if not have or self.engine.features_df[have].abs().sum().sum() == 0 \
+                or getattr(self.engine, "deep_columns_backbone", None) not in (None, bb):
+            print(f"Adding deep appearance features (PCA of {od.backbone_short(bb)} 5 m and 10 m patches) "
+                  f"to the classifier features...")
             QApplication.processEvents()
             self.engine.add_deep_columns(deep)
+            self.engine.deep_columns_backbone = bb
         self.engine.use_deep_features = True
         return True
 
@@ -5458,9 +5994,9 @@ class ObiaApp(QMainWindow):
         if len(result["classes"]) < 2:
             print("Separability: at least two classes need 2 or more training samples each.")
             return
-        print("Class separability (Jeffries-Matusita, 0-2):")
+        print("Class separability (Jeffries-Matusita, 0-2, cross-validated; full-dimensional as in v1.1 in brackets):")
         for (a, b) in sorted(result["jm_feature"], key=lambda k: result["jm"].loc[k[0], k[1]]):
-            print(f" -> {a} vs {b}: {result['jm'].loc[a, b]:.3f}")
+            print(f" -> {a} vs {b}: {result['jm'].loc[a, b]:.3f}  ({result['jm_classic'].loc[a, b]:.3f})")
         class_colors = {name: data["color"] for name, data in self.classes.items()}
         png_path = None
         if self.workspace_dir:
@@ -5696,14 +6232,170 @@ class ObiaApp(QMainWindow):
         self.sieved_classified_raster_ints = self.raw_classified_raster_ints.copy()
         self.apply_generalization_sieve()
 
+    # --- Greenness refinement (pixel level, between the object map and the sieve) ---
+    _REFINE_GREEN_HINTS = ("grass", "veg", "green", "weed", "lawn", "pasture")
+    _REFINE_OTHER_HINTS = ("bare", "soil", "dirt", "ground", "fallow", "earth")
+
+    def _refine_sync_enabled(self):
+        on = self.refine_check.isChecked()
+        for w in (self.refine_green_combo, self.refine_other_combo, self.refine_cutoff_spin,
+                  self.refine_from_samples_btn, self.refine_window_combo, self.refine_mode_combo):
+            w.setEnabled(on)
+
+    def _refresh_refine_combos(self):
+        """ Keep the two class pickers in step with the class list (and guess grass/bare
+        the first time), and show the window size on the ground. """
+        names = list(self.classes)
+        for combo, hints in ((self.refine_green_combo, self._REFINE_GREEN_HINTS),
+                             (self.refine_other_combo, self._REFINE_OTHER_HINTS)):
+            cur = combo.currentText()
+            if [combo.itemText(i) for i in range(combo.count())] != names:
+                combo.blockSignals(True)
+                combo.clear()
+                combo.addItems(names)
+                combo.blockSignals(False)
+            if cur in names:
+                combo.setCurrentText(cur)
+            else:
+                guess = next((n for n in names if any(h in n.lower() for h in hints)), None)
+                combo.setCurrentIndex(names.index(guess) if guess else -1)
+        ps = self.engine.effective_pixel_size
+        geo = bool(getattr(self.engine, "native_crs_is_geographic", False))
+        for i in range(self.refine_window_combo.count()):
+            n = self.refine_window_combo.itemData(i)
+            txt = f"{n}×{n} px"
+            if ps and not geo:
+                txt += f" (≈{n * ps * 100:.0f} cm)"
+            self.refine_window_combo.setItemText(i, txt)
+
+    def _refine_settings(self):
+        return {"enabled": bool(self.refine_check.isChecked()),
+                "green": self.refine_green_combo.currentText() or None,
+                "other": self.refine_other_combo.currentText() or None,
+                "cutoff": round(float(self.refine_cutoff_spin.value()), 4),
+                "window": int(self.refine_window_combo.currentData() or 3),
+                "mode": self.refine_mode_combo.currentData() or "hybrid"}
+
+    def _set_refine_settings(self, st):
+        """ Restore saved settings (without re-running anything; the caller does that). """
+        st = st or {}
+        self._refresh_refine_combos()
+        widgets = (self.refine_check, self.refine_green_combo, self.refine_other_combo,
+                   self.refine_cutoff_spin, self.refine_window_combo, self.refine_mode_combo)
+        for w in widgets:
+            w.blockSignals(True)
+        try:
+            self.refine_check.setChecked(bool(st.get("enabled", False)))
+            for combo, key in ((self.refine_green_combo, "green"), (self.refine_other_combo, "other")):
+                if st.get(key) in self.classes:
+                    combo.setCurrentText(st[key])
+            if st.get("cutoff") is not None:
+                self.refine_cutoff_spin.setValue(float(st["cutoff"]))
+                self._refine_cutoff_set = True
+            i = self.refine_mode_combo.findData(st.get("mode", "hybrid"))
+            if i >= 0:
+                self.refine_mode_combo.setCurrentIndex(i)
+            i = self.refine_window_combo.findData(int(st.get("window", 3)))
+            if i >= 0:
+                self.refine_window_combo.setCurrentIndex(i)
+        finally:
+            for w in widgets:
+                w.blockSignals(False)
+        self._refine_cache = None
+        self._refine_sync_enabled()
+        if not self.refine_check.isChecked():
+            self.refine_status_label.setText("")
+
+    def _refine_controls_changed(self, *_):
+        self._refine_sync_enabled()
+        if self.refine_check.isChecked() and not self._refine_cutoff_set and self._refine_pair()[0]:
+            self.refine_cutoff_from_samples(quiet=True)
+            return
+        if self.raw_classified_raster_ints is not None:
+            self.apply_generalization_sieve()
+        elif not self.refine_check.isChecked():
+            self.refine_status_label.setText("")
+
+    def _refine_pair(self):
+        """ (green index, other index) in the classified map, or None with a reason. """
+        st = self._refine_settings()
+        g, o = st["green"], st["other"]
+        if not g or not o or g not in self.classes or o not in self.classes:
+            return None, "pick the green and the other class"
+        if g == o:
+            return None, "the two classes must differ"
+        order = list(self.classes)
+        return (order.index(g) + 1, order.index(o) + 1), None
+
+    def _refined_class_map(self):
+        """ The object map with the greenness refinement applied (cached), or the object
+        map itself when the refinement is off or can't run. """
+        raw = self.raw_classified_raster_ints
+        if raw is None or not self.refine_check.isChecked():
+            return raw
+        pair, why = self._refine_pair()
+        if pair is None or self.engine.original_ortho_data is None \
+                or self.engine.original_ortho_data.shape[0] < 3 \
+                or self.engine.original_ortho_data.shape[1:] != raw.shape:
+            why = why or "needs the RGB image the map was made from"
+            self.refine_status_label.setText(f"Not applied: {why}.")
+            print(f"Greenness refinement not applied: {why}.")
+            return raw
+        st = self._refine_settings()
+        key = (pair, st["cutoff"], st["window"], st["mode"])
+        c = self._refine_cache
+        if c is not None and c[0] is raw and c[1] == key:
+            return c[2]
+        print(f"Refining '{st['green']}' / '{st['other']}' by greenness "
+              f"(ExG cutoff {st['cutoff']:.3f}, {st['window']}×{st['window']} px window, "
+              f"{self.refine_mode_combo.currentText().lower()})...")
+        QApplication.processEvents()
+        refined, info = self.engine.refine_by_greenness(raw, pair[0], pair[1], st["cutoff"], st["window"],
+                                                        mode=st["mode"])
+        tot = max(1, info["total"])
+        g_before = int((raw == pair[0]).sum())
+        g_after = g_before + info["to_green"] - info["to_other"]
+        msg = (f"{100 * info['to_green'] / tot:.1f}% of the map moved {st['other']} → {st['green']}, "
+               f"{100 * info['to_other'] / tot:.1f}% {st['green']} → {st['other']}. "
+               f"{st['green']}: {100 * g_before / tot:.1f}% → {100 * g_after / tot:.1f}% of the map.")
+        self.refine_status_label.setText(msg)
+        print("Greenness refinement: " + msg)
+        self._refine_cache = (raw, key, refined)
+        return refined
+
+    def refine_cutoff_from_samples(self, quiet=False):
+        pair, why = self._refine_pair()
+        st = self._refine_settings()
+        if pair is None:
+            cutoff, info = None, why
+        else:
+            cutoff, info = self.engine.suggest_greenness_cutoff(
+                self.classes[st["green"]]["training_segments"], self.classes[st["other"]]["training_segments"])
+        if cutoff is None:
+            if quiet:
+                print(f"Greenness cutoff not set from samples ({info}); using {st['cutoff']:.3f}.")
+                self._refine_cutoff_set = True
+                self._refine_controls_changed()
+            else:
+                QMessageBox.information(self, "Greenness Refinement", f"Can't suggest a cutoff: {info}.")
+            return
+        self.refine_cutoff_spin.setValue(round(cutoff, 3))
+        self._refine_cutoff_set = True
+        print(f"Greenness cutoff from samples: ExG {cutoff:.3f} -- {100 * info['green_kept']:.0f}% of the "
+              f"{info['n_green']} '{st['green']}' samples read above it and {100 * info['other_kept']:.0f}% of the "
+              f"{info['n_other']} '{st['other']}' samples at or below it (median ExG "
+              f"{info['median_green']:.3f} vs {info['median_other']:.3f}).")
+        self._refine_controls_changed()
+
     def apply_generalization_sieve(self):
         if self.raw_classified_raster_ints is None: return
         threshold = self.gen_spinbox.value()
-        
+
+        base = self._refined_class_map()
         print(f"Applying Spatial Generalization Sieve (MMU: {threshold} px)...")
         QApplication.processEvents()
         
-        self.sieved_classified_raster_ints = self.engine.apply_sieve_filter(self.raw_classified_raster_ints, threshold)
+        self.sieved_classified_raster_ints = self.engine.apply_sieve_filter(base, threshold)
         
         self._recolor_classified()
 
@@ -5791,6 +6483,7 @@ class ObiaApp(QMainWindow):
                 "compactness": self.compactness_dspinbox.value(),
                 "sigma": self.sigma_dspinbox.value(),
                 "ortho_path": self.engine.ortho_path,
+                "extent": None if self.engine.extent is None else [int(v) for v in self.engine.extent],
                 "effective_pixel_size": self.engine.effective_pixel_size,
                 "feature_pixel_size": self.engine.feature_pixel_size,
                 "dsm_path": self.engine.dsm_path,
@@ -5800,6 +6493,8 @@ class ObiaApp(QMainWindow):
                 "accuracy_min_per_class": self.acc_min_per_class_spinbox.value(),
                 "accuracy_strata": self.engine.accuracy_strata,
                 "use_deep_in_classifier": self.use_deep_check.isChecked(),
+                "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
+                "greenness_refinement": self._refine_settings(),
                 "classes": {}
             }
             for class_name, data in self.classes.items():
@@ -5873,6 +6568,19 @@ class ObiaApp(QMainWindow):
             # exact pixel grid and won't line up with a differently-sized ortho.
             with rasterio.open(os.path.join(target_workspace_dir, "segments.tif")) as src:
                 saved_shape = (src.height, src.width)
+            saved_extent = session_data.get("extent")
+            saved_extent = None if not saved_extent else tuple(int(v) for v in saved_extent)
+            if self.engine.ortho_data is not None and (
+                    self.engine.extent != saved_extent
+                    or os.path.normcase(os.path.abspath(self.engine.ortho_path or ""))
+                    != os.path.normcase(os.path.abspath(session_data.get("ortho_path") or ""))):
+                # Another extent (or the whole image) is loaded: read this workspace's own.
+                if session_data.get("ortho_path") and os.path.exists(session_data["ortho_path"]):
+                    self.path_edit.setText(session_data["ortho_path"])
+                    self.load_ortho(out_shape=saved_shape, extent=saved_extent)
+                    self.workspace_dir = target_workspace_dir
+                elif self.engine.extent != saved_extent:
+                    self.engine.ortho_data = None   # falls through to locating the file below
             if self.engine.ortho_data is None:
                 ortho_path = session_data.get("ortho_path")
                 if not ortho_path or not os.path.exists(ortho_path):
@@ -5881,7 +6589,7 @@ class ObiaApp(QMainWindow):
                         print("Error: Orthomosaic not found and none was located -- workspace load cancelled.")
                         return
                 self.path_edit.setText(ortho_path)
-                self.load_ortho(out_shape=saved_shape)   # straight onto the saved grid
+                self.load_ortho(out_shape=saved_shape, extent=saved_extent)   # straight onto the saved grid
                 if self.engine.ortho_data is None:
                     print("Error: Failed to load the workspace's orthomosaic.")
                     return
@@ -5992,6 +6700,7 @@ class ObiaApp(QMainWindow):
             self.refresh_load_view_overlay()
             self._discover_load_from_workspace()
 
+            self._set_refine_settings(session_data.get("greenness_refinement"))
             map_npy = os.path.join(self.workspace_dir, "classified_map.npy")
             if os.path.exists(map_npy):
                 self.raw_classified_raster_ints = np.load(map_npy)
@@ -6120,6 +6829,10 @@ class ObiaApp(QMainWindow):
         self.workspace_dir = None
         self.classes = {}
         self.classifier = None
+        self._set_refine_settings(None)
+        self._refine_cutoff_set = False
+        self._apply_context()
+        self._sync_extent_button()
 
         self.base_raw_qimg = None
         self.raw_pixmap = None

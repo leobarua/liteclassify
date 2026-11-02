@@ -70,7 +70,7 @@
     ├── segments.tif                <span class="c">segment ID of every pixel</span>
     ├── segments.gpkg               <span class="c">segment polygons</span>
     ├── segment_features.csv        <span class="c">every feature of every segment</span>
-    ├── deep_features.npz           <span class="c">DINOv2 appearance per segment</span>
+    ├── deep_features.npz           <span class="c">appearance per segment (records its backbone)</span>
     ├── groups.json                 <span class="c">Discover groups, names, edits</span>
     ├── classified_map.npy          <span class="c">current classification, before the sieve</span>
     ├── class_separability.png      <span class="c">last separability check</span>
@@ -130,7 +130,7 @@
   </tbody>
 </table></div>
 <h3>Fixed settings</h3>
-<p class="small">Random Forest: 100 trees, scikit-learn defaults otherwise, fixed seed (42). DINOv2: ViT-S/14, frozen; patches of 5 m and 10 m resized to 224 px; 32 principal components per patch size for Discover, 10 for the classifier. Height above ground: ground from a 40 m opening of the DSM at ~1 m. GLCM: 15 grey levels, distance 1, four directions.</p>
+<p class="small">Random Forest: 100 trees, scikit-learn defaults otherwise, fixed seed (42). DINOv2: ViT-S/14, frozen (DINOv3 ViT-S+/16 when chosen, CLS token); patches of 5 m and 10 m resized to 224 px; 32 principal components per patch size for Discover, 10 for the classifier. Height above ground: ground from a 40 m opening of the DSM at ~1 m. GLCM: 15 grey levels, distance 1, four directions.</p>
 <h3>Starting values</h3>
 <div class="table-wrap"><table>
   <thead><tr><th>Situation</th><th>Working grid</th><th>Object size / segments</th><th>Colour/texture at</th></tr></thead>
@@ -192,6 +192,7 @@
     <tr><th>CNN</th><td>Convolutional neural network: an image model built from stacked sliding filters. Lite Classify does not use one; DINOv2 is a vision transformer.</td></tr>
     <tr><th>Confusion matrix</th><td>A table of map class (rows) against reference class (columns) for a set of points. Also called an error matrix.</td></tr>
     <tr><th>DINOv2</th><td>A vision transformer from Meta AI trained without labels. Lite Classify uses it frozen to describe each object's appearance.</td></tr>
+    <tr><th>DINOv3</th><td>DINOv2's successor from Meta AI. Under Meta's DINOv3 License, not an open-source one, so it isn't included; Lite Classify can use a copy you download yourself (experimental).</td></tr>
     <tr><th>DSM</th><td>Digital Surface Model: height of the top surface, including trees and roofs. Not the bare ground.</td></tr>
     <tr><th>Embedding</th><td>A list of numbers describing an image patch, arranged so that similar-looking patches get similar numbers.</td></tr>
     <tr><th>Feature</th><td>One measured property of a segment, such as mean green or slope. Lite Classify uses 19, 24 with a DSM, 44 with appearance.</td></tr>
@@ -233,6 +234,7 @@
   <li>Ledoit, O., &amp; Wolf, M. (2004). A well-conditioned estimator for large-dimensional covariance matrices. <em>J. Multivariate Anal.</em>, 88(2), 365–411.</li>
   <li>Olofsson, P., et al. (2014). Good practices for estimating area and assessing accuracy of land change. <em>Remote Sens. Environ.</em>, 148, 42–57. <a href="https://doi.org/10.1016/j.rse.2014.02.015">doi:10.1016/j.rse.2014.02.015</a></li>
   <li>Oquab, M., et al. (2024). DINOv2: Learning robust visual features without supervision. <em>Transactions on Machine Learning Research</em>. <a href="https://arxiv.org/abs/2304.07193">arXiv:2304.07193</a></li>
+  <li>Siméoni, O., et al. (2025). DINOv3. <a href="https://arxiv.org/abs/2508.10104">arXiv:2508.10104</a></li>
   <li>Pontius, R. G., Jr., &amp; Millones, M. (2011). Death to Kappa. <em>Int. J. Remote Sens.</em>, 32(15), 4407–4429. <a href="https://doi.org/10.1080/01431161.2011.552923">doi:10.1080/01431161.2011.552923</a></li>
   <li>Stehman, S. V. (2014). Estimating area and map accuracy for stratified random sampling when the strata are different from the map classes. <em>Int. J. Remote Sens.</em>, 35(13), 4923–4939. <a href="https://doi.org/10.1080/01431161.2014.930207">doi:10.1080/01431161.2014.930207</a></li>
   <li>Woebbecke, D. M., et al. (1995). Color indices for weed identification under various soil, residue, and lighting conditions. <em>Trans. ASAE</em>, 38(1), 259–269. <a href="https://doi.org/10.13031/2013.27838">doi:10.13031/2013.27838</a></li>
@@ -250,7 +252,7 @@
 <p><strong>If you publish maps, data or papers made with Lite Classify, please cite the version you used:</strong></p>
 <p class="cite">Barua, L. D. (2026). <em>Lite Classify</em> (Version 1.1) [Computer software]. Zenodo. <a href="https://doi.org/10.5281/zenodo.23612117">https://doi.org/10.5281/zenodo.23612117</a></p>
 <p>To cite all versions, use the concept DOI <a href="https://doi.org/10.5281/zenodo.23462352">10.5281/zenodo.23462352</a>. A paper describing Lite Classify is in preparation; its citation will be added here when it is published.</p>
-<p class="small">Lite Classify includes the DINOv2 backbone code and pretrained weights by Meta Platforms, Inc., under the Apache License 2.0.</p>
+<p class="small">Lite Classify includes the DINOv2 backbone code and pretrained weights by Meta Platforms, Inc., under the Apache License 2.0. It does not include DINOv3: the optional DINOv3 backbone runs on timm's model code (Apache 2.0) with weights each user downloads from Meta under Meta's DINOv3 License.</p>
 
 <nav class="pager" aria-label="Previous part">
   <a href="workflow.html"><span class="k">← Part C</span><b>Workflow, tab by tab</b></a>

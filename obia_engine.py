@@ -291,6 +291,13 @@ class ObiaEngine:
         self.native_pixel_size = None
         self.native_width = None
         self.native_height = None
+        # Process-this-extent-only: (col_off, row_off, width, height) in the source file's
+        # native pixels, or None for the whole file. Everything is then read from that
+        # window only, and native_width/native_height describe the window (the "source"
+        # every resolution is relative to); file_width/file_height keep the whole file.
+        self.extent = None
+        self.file_width = None
+        self.file_height = None
         self.native_crs_is_geographic = False
         self.source_dtype = None
         self.source_bands = None
@@ -328,41 +335,72 @@ class ObiaEngine:
             return LOAD_MAX_PX
         return max(25e6, min(LOAD_MAX_PX, 0.5 * ram / WORKING_BYTES_PER_PX))
 
+    def _window(self):
+        """ The rasterio Window of the processed extent, or None for the whole file. """
+        if self.extent is None:
+            return None
+        c, r, w, h = self.extent
+        return rasterio.windows.Window(c, r, w, h)
+
     @staticmethod
-    def _read_ortho(src, out_h, out_w):
+    def clamp_extent(extent, file_w, file_h, min_px=64):
+        """ (col, row, w, h) in native pixels, clipped to the file; None when it covers
+        (almost) the whole file or is too small to use. """
+        if extent is None:
+            return None
+        c, r, w, h = (int(round(v)) for v in extent)
+        c0, r0 = max(0, c), max(0, r)
+        c1, r1 = min(file_w, c + w), min(file_h, r + h)
+        if c1 - c0 < min_px or r1 - r0 < min_px:
+            return None
+        if c0 == 0 and r0 == 0 and c1 == file_w and r1 == file_h:
+            return None
+        return (c0, r0, c1 - c0, r1 - r0)
+
+    def _read_ortho(self, src, out_h, out_w):
         """ RGB + valid mask from an open raster at out_h x out_w (average resampling for
-        the colours, nearest for the mask; GDAL uses the file's overviews when it has them).
+        the colours, nearest for the mask; GDAL uses the file's overviews when it has them),
+        over the processed extent (self.extent) or the whole file.
         Returns (data, meta, valid_mask). """
-        same = (out_h == src.height and out_w == src.width)
+        win = self._window()
+        src_w = src.width if win is None else int(win.width)
+        src_h = src.height if win is None else int(win.height)
+        same = (out_h == src_h and out_w == src_w)
         if same:
-            data = src.read((1, 2, 3))
+            data = src.read((1, 2, 3), window=win)
         else:
-            data = src.read((1, 2, 3), out_shape=(3, out_h, out_w),
+            data = src.read((1, 2, 3), window=win, out_shape=(3, out_h, out_w),
                             resampling=rasterio.enums.Resampling.average)
         data = to_uint8(data)   # 16-bit and float orthos: everything downstream works in 0..255
-        transform = src.transform * src.transform.scale(src.width / out_w, src.height / out_h)
+        base = src.transform if win is None else src.window_transform(win)
+        transform = base * base.scale(src_w / out_w, src_h / out_h)
         meta = src.meta.copy()
         meta.update(width=out_w, height=out_h, transform=transform)
         try:
             if same:
-                valid_mask = src.read_masks(1) > 0
+                valid_mask = src.read_masks(1, window=win) > 0
             else:
-                valid_mask = src.read_masks(1, out_shape=(out_h, out_w),
+                valid_mask = src.read_masks(1, window=win, out_shape=(out_h, out_w),
                                             resampling=rasterio.enums.Resampling.nearest) > 0
         except Exception:
             rgb_sum = np.sum(data, axis=0)
             valid_mask = (rgb_sum > 0) & (rgb_sum < 765)
         return data, meta, valid_mask
 
-    def load_raster(self, filepath, max_pixels=None, out_shape=None):
+    def load_raster(self, filepath, max_pixels=None, out_shape=None, extent=None):
         """ Reads the orthomosaic. Above max_pixels (default: load_pixel_limit()) it is read
         straight at a reduced resolution instead of at native -- a 6 Gpx file would need
         18 GB just to hold. out_shape=(h, w) reads exactly that grid instead (Load
-        Workspace). self.load_reduction is the linear factor (1.0 = native). """
+        Workspace). extent=(col, row, w, h) in native pixels reads only that part of the
+        file (Process This Extent Only). self.load_reduction is the linear factor (1.0 =
+        native). """
         if max_pixels is None:
             max_pixels = self.load_pixel_limit()
         with rasterio.open(filepath) as src:
-            native_px = src.width * src.height
+            self.file_width, self.file_height = src.width, src.height
+            self.extent = self.clamp_extent(extent, src.width, src.height)
+            src_w, src_h = ((src.width, src.height) if self.extent is None else self.extent[2:])
+            native_px = src_w * src_h
             factor = max(1.0, float(np.sqrt(native_px / max_pixels)))
             if factor > 1.0:
                 # Snap up to one of the file's overview levels when it has them: GDAL then
@@ -371,16 +409,16 @@ class ObiaEngine:
                 levels = [f for f in (src.overviews(1) or []) if f >= factor]
                 if levels:
                     factor = float(min(levels))
-            out_w = max(1, int(round(src.width / factor)))
-            out_h = max(1, int(round(src.height / factor)))
+            out_w = max(1, int(round(src_w / factor)))
+            out_h = max(1, int(round(src_h / factor)))
             if out_shape is not None:
                 out_h, out_w = int(out_shape[0]), int(out_shape[1])
-                factor = src.width / out_w
+                factor = src_w / out_w
             data, meta, valid_mask = self._read_ortho(src, out_h, out_w)
             self.ortho_path = filepath
             self.native_pixel_size = abs(src.transform.a)
-            self.native_width = src.width
-            self.native_height = src.height
+            self.native_width = src_w
+            self.native_height = src_h
             self.native_crs_is_geographic = bool(src.crs and src.crs.is_geographic)
             self.source_dtype = str(src.dtypes[0])      # before to_uint8 (status line)
             self.source_bands = int(src.count)
@@ -395,6 +433,42 @@ class ObiaEngine:
                      "features_df", "adjacency_graph"):
             setattr(self, name, None)
         return self.ortho_data, self.ortho_meta
+
+    def read_context_overview(self, max_side=3072):
+        """ The whole file as a small RGB array (h, w, 3) uint8 for the faded backdrop
+        around a processed extent, or None. Read with nearest resampling from the file's
+        overviews when it has them, so it stays quick on large files. """
+        if self.ortho_path is None:
+            return None
+        with rasterio.open(self.ortho_path) as src:
+            f = max(1.0, max(src.width, src.height) / float(max_side))
+            ow, oh = max(1, int(round(src.width / f))), max(1, int(round(src.height / f)))
+            data = to_uint8(src.read((1, 2, 3), out_shape=(3, oh, ow),
+                                     resampling=rasterio.enums.Resampling.nearest))
+            try:
+                m = src.read_masks(1, out_shape=(oh, ow), resampling=rasterio.enums.Resampling.nearest) > 0
+            except Exception:
+                m = np.ones((oh, ow), bool)
+        rgba = np.zeros((oh, ow, 4), np.uint8)
+        rgba[..., :3] = np.transpose(data, (1, 2, 0))
+        rgba[..., 3] = np.where(m, 255, 0)
+        return rgba
+
+    def extent_in_grid(self):
+        """ Where the whole file sits in working-grid pixels: (x, y, w, h), for drawing the
+        context backdrop around a processed extent. None without an extent. """
+        if self.extent is None or self.ortho_data is None:
+            return None
+        H, W = self.ortho_data.shape[1:]
+        fx, fy = self.native_width / W, self.native_height / H
+        c, r = self.extent[:2]
+        return (-c / fx, -r / fy, self.file_width / fx, self.file_height / fy)
+
+    def grid_to_native(self, x, y):
+        """ Working-grid pixel -> native pixel of the whole file. """
+        H, W = self.ortho_data.shape[1:]
+        c, r = (0, 0) if self.extent is None else self.extent[:2]
+        return c + x * self.native_width / W, r + y * self.native_height / H
 
     def resample_ortho(self, target_pixel_size=None, scale_percent=None, out_shape=None):
         """
@@ -435,8 +509,9 @@ class ObiaEngine:
 
         with rasterio.open(self.ortho_path) as src:
             native_pixel_size = abs(src.transform.a)
+            src_w, src_h = self.native_width or src.width, self.native_height or src.height
             if out_shape is not None:
-                factor = src.width / out_shape[1]
+                factor = src_w / out_shape[1]
             elif scale_percent is not None:
                 if scale_percent <= 0:
                     raise ValueError("scale_percent must be > 0.")
@@ -447,8 +522,8 @@ class ObiaEngine:
                 factor = target_pixel_size / native_pixel_size
             factor = max(factor, 1e-6)
 
-            out_width = max(1, int(round(src.width / factor)))
-            out_height = max(1, int(round(src.height / factor)))
+            out_width = max(1, int(round(src_w / factor)))
+            out_height = max(1, int(round(src_h / factor)))
             if out_shape is not None:
                 out_height, out_width = int(out_shape[0]), int(out_shape[1])
 
@@ -1387,7 +1462,8 @@ class ObiaEngine:
         scales the working-grid labels (and DSM/slope) up onto it. """
         seg = self.segmented_image
         H, W = seg.shape
-        Hn, Wn = src.height, src.width
+        Hn, Wn = self.native_height, self.native_width     # the processed extent (or whole file)
+        oc, orow = (0, 0) if self.extent is None else self.extent[:2]
         wr0 = min(slices[s - 1][0].start for s in owned)
         wr1 = max(slices[s - 1][0].stop for s in owned)
         wc0 = min(slices[s - 1][1].start for s in owned)
@@ -1396,7 +1472,7 @@ class ObiaEngine:
         nc0, nc1 = int(np.floor(wc0 * Wn / W)), min(Wn, int(np.ceil(wc1 * Wn / W)))
         fh = max(1, int(round((nr1 - nr0) * Hf / Hn)))
         fw = max(1, int(round((nc1 - nc0) * Wf / Wn)))
-        win = rasterio.windows.Window(nc0, nr0, nc1 - nc0, nr1 - nr0)
+        win = rasterio.windows.Window(oc + nc0, orow + nr0, nc1 - nc0, nr1 - nr0)
         same = (fh == nr1 - nr0 and fw == nc1 - nc0)
         rs = rasterio.enums.Resampling.nearest if same else rasterio.enums.Resampling.average
         rgb = to_uint8(src.read((1, 2, 3), window=win, out_shape=(3, fh, fw), resampling=rs))
@@ -1665,6 +1741,7 @@ class ObiaEngine:
     DSM_FEATURES = ['dsm_mean', 'dsm_std', 'slope_mean', 'dsm_rel_neighbors', 'hag_mean']
     DEEP_PREFIX = 'deep_'
     use_deep_features = False      # classifier also uses the deep_* columns (see add_deep_columns)
+    deep_columns_backbone = None   # backbone the deep_* columns came from (set by the app)
 
     def active_feature_columns(self, include_deep=True):
         """ The features the Random Forest uses: the 19 base features; with a DSM the
@@ -1744,7 +1821,7 @@ class ObiaEngine:
         return self.features_df
 
     def add_deep_columns(self, deep, n_pc=10):
-        """ deep_* columns in features_df from cached DINOv2 features (obia_discover): the
+        """ deep_* columns in features_df from cached deep features (obia_discover): the
         first n_pc principal components of each patch size, fitted over all segments.
         Segments without deep features get 0. """
         from sklearn.decomposition import PCA
@@ -1763,6 +1840,10 @@ class ObiaEngine:
                 self.features_df[f"{self.DEEP_PREFIX}{tag}_pc{j + 1}"] = col
         return [c for c in self.features_df.columns if c.startswith(self.DEEP_PREFIX)]
 
+    # Below this many samples a class's cross-validated JM is mostly noise: on CAFS, 12
+    # mud samples split against themselves scored up to 1.3 (true value 0).
+    SEPARABILITY_MIN_N = 30
+
     def compute_class_separability(self, training_segments, features=None):
         """
         Class separability of the current training samples, before training.
@@ -1776,8 +1857,18 @@ class ObiaEngine:
           'jm_feature'   {(a, b): Series of single-feature JM, highest first}
           'low_n'        classes with fewer samples than features (estimate less reliable)
 
+        'jm' is cross-validated (since v1.2): for each pair, k folds (k = min(5, smaller
+        class size)); on the training folds a shrinkage LDA direction separating the two
+        classes is fitted, the held-out samples are projected onto it, and JM is computed
+        from the held-out scores of all folds. The classic full-dimensional JM
+        ('jm_classic') saturates at 2 with many features and few samples (a class split
+        randomly against itself scores up to ~1.97 with 44 features); the cross-validated
+        score stays near 0 for such a split and only rewards separation that holds on
+        samples the direction wasn't fitted to.
+
         JM = 2 (1 - exp(-B)), B the Bhattacharyya distance between two Gaussians fitted to
-        each class. Features are standardised by the pooled training spread so none
+        each class (to the 1-D held-out scores for 'jm', to the full feature space for
+        'jm_classic'). Features are standardised by the pooled training spread so none
         dominates by scale, and each class covariance is a Ledoit-Wolf shrinkage estimate,
         which stays stable when a class has fewer samples than there are features.
         Common reading: >= 1.9 well separated, 1.0-1.9 partly separable, < 1.0 poorly
@@ -1794,7 +1885,9 @@ class ObiaEngine:
         std = pd.DataFrame({c: data[c].std(0) for c in classes}, index=features).T
         result = dict(classes=classes, skipped=skipped, n={c: n[c] for c in classes}, features=features,
                       mean=mean, std=std, jm=pd.DataFrame(index=classes, columns=classes, dtype=float),
-                      jm_feature={}, low_n=[c for c in classes if n[c] < len(features)])
+                      jm_classic=pd.DataFrame(index=classes, columns=classes, dtype=float),
+                      jm_feature={}, low_n=[c for c in classes if n[c] < len(features)],
+                      few=[c for c in classes if n[c] < self.SEPARABILITY_MIN_N])
         if len(classes) < 2:
             return result
 
@@ -1809,8 +1902,33 @@ class ObiaEngine:
         def jm_from_b(b):
             return 2.0 * (1.0 - np.exp(-b))
 
+        def b_1d(sa, sb):
+            va, vb = sa.var() + 1e-9, sb.var() + 1e-9
+            v = (va + vb) / 2.0
+            return (sa.mean() - sb.mean()) ** 2 / (8.0 * v) + 0.5 * np.log(v / np.sqrt(va * vb))
+
+        def cv_jm(xa, xb, repeats=5):
+            from sklearn.model_selection import StratifiedKFold
+            X = np.vstack([xa, xb])
+            y = np.r_[np.zeros(len(xa), int), np.ones(len(xb), int)]
+            k = min(5, len(xa), len(xb))
+            jms = []
+            for seed in range(repeats):            # averaged over a few fixed splits: steadier near a cutoff
+                score = np.empty(len(y))
+                for tr, te in StratifiedKFold(k, shuffle=True, random_state=seed).split(X, y):
+                    Xa, Xb = X[tr][y[tr] == 0], X[tr][y[tr] == 1]
+                    ma, mb = Xa.mean(0), Xb.mean(0)
+                    sw = LedoitWolf().fit(np.vstack([Xa - ma, Xb - mb])).covariance_ + 1e-6 * np.eye(X.shape[1])
+                    w = np.linalg.solve(sw, ma - mb)
+                    sc = np.sqrt(w @ sw @ w)       # unit within-class spread and centred on the
+                    w = w / sc if sc > 0 else w    # training midpoint, so folds are comparable
+                    score[te] = (X[te] - (ma + mb) / 2.0) @ w
+                jms.append(jm_from_b(b_1d(score[y == 0], score[y == 1])))
+            return float(np.mean(jms))
+
         for i, a in enumerate(classes):
             result['jm'].loc[a, a] = np.nan
+            result['jm_classic'].loc[a, a] = np.nan
             for b in classes[i + 1:]:
                 d = mu[a] - mu[b]
                 s = (cov[a] + cov[b]) / 2.0
@@ -1818,7 +1936,8 @@ class ObiaEngine:
                 _, lda = np.linalg.slogdet(cov[a])
                 _, ldb = np.linalg.slogdet(cov[b])
                 bh = d @ np.linalg.solve(s, d) / 8.0 + 0.5 * (ld - 0.5 * (lda + ldb))
-                result['jm'].loc[a, b] = result['jm'].loc[b, a] = jm_from_b(bh)
+                result['jm_classic'].loc[a, b] = result['jm_classic'].loc[b, a] = jm_from_b(bh)
+                result['jm'].loc[a, b] = result['jm'].loc[b, a] = cv_jm(z[a], z[b])
                 # Single-feature JM: which features on their own pull this pair apart.
                 vs = (var[a] + var[b]) / 2.0
                 b1 = d ** 2 / (8.0 * vs) + 0.5 * np.log(vs / np.sqrt(var[a] * var[b]))
@@ -1829,6 +1948,100 @@ class ObiaEngine:
         if size_threshold <= 0:
             return classified_array
         return sieve(classified_array.astype(np.int32), size_threshold).astype(np.uint8)
+
+    # --- Greenness refinement: a pixel-level pass after classification ---------------
+    # Objects decide that an area is, say, "bare or grass"; pixels then decide which of
+    # the two by their greenness, so rows and strips narrower than a segment can show up
+    # without making the segments smaller. ExG is the same chromatic-coordinate index as
+    # the exg_mean feature (2g - r - b on r, g, b scaled to sum to 1), averaged over a
+    # small square window so single pixels don't flicker.
+    _REFINE_ROWS = 1024
+
+    def _exg_strip(self, r0, r1, window):
+        """ Window-averaged ExG for rows r0:r1 of the working grid (float32). """
+        from scipy.ndimage import uniform_filter
+        rgb = self.original_ortho_data
+        H = rgb.shape[1]
+        pad = window // 2
+        a, b = max(0, r0 - pad), min(H, r1 + pad)
+        x = rgb[:3, a:b, :].astype(np.float32)
+        s = x.sum(axis=0)
+        s[s == 0] = 1.0
+        exg = (2.0 * x[1] - x[0] - x[2]) / s
+        if window > 1:
+            exg = uniform_filter(exg, size=window, mode="nearest")
+        return exg[r0 - a:r0 - a + (r1 - r0)]
+
+    def suggest_greenness_cutoff(self, green_segments, other_segments):
+        """ The ExG cutoff that best separates the training segments of the two classes
+        by their mean ExG (the exg_mean feature): the one with the highest mean of the
+        share of green segments above it and the share of other segments at or below it.
+        Returns (cutoff, info) or (None, reason). """
+        df = self.features_df
+        if df is None or "exg_mean" not in df.columns:
+            return None, "no ExG feature in this workspace"
+        idx = set(df.index)
+        g = df.loc[[s for s in green_segments if s in idx], "exg_mean"].dropna().to_numpy(float)
+        o = df.loc[[s for s in other_segments if s in idx], "exg_mean"].dropna().to_numpy(float)
+        if len(g) == 0 or len(o) == 0:
+            return None, "both classes need training samples"
+        both = np.concatenate([g, o])
+        grid = np.linspace(both.min(), both.max(), 400)
+        kept_g = (g[None, :] > grid[:, None]).mean(axis=1)
+        kept_o = (o[None, :] <= grid[:, None]).mean(axis=1)
+        score = (kept_g + kept_o) / 2.0
+        i = int(np.argmax(score))
+        return float(grid[i]), {"balanced": float(score[i]), "green_kept": float(kept_g[i]),
+                                "other_kept": float(kept_o[i]), "n_green": int(len(g)), "n_other": int(len(o)),
+                                "median_green": float(np.median(g)), "median_other": float(np.median(o))}
+
+    def refine_by_greenness(self, class_map, green_idx, other_idx, cutoff, window,
+                            mode="hybrid", min_green_share=0.25):
+        """ Re-decide the pixels mapped as green_idx or other_idx by window-averaged ExG.
+        Every other class is left as it is.
+          mode "pixel": both ways per pixel -- above cutoff -> green, at or below -> other.
+          mode "hybrid": other -> green per pixel (thin green rows appear), but green ->
+            other only for a whole segment with under min_green_share of its pixels above
+            the cutoff, so patchy (e.g. dying) grass isn't punched full of holes.
+        Returns (new map, {"to_green": n, "to_other": n, "total": n}). """
+        out = class_map.copy()
+        seg = self.segmented_image
+        hybrid = mode == "hybrid" and seg is not None and seg.shape == class_map.shape
+        green_mask = np.zeros(out.shape, dtype=bool)
+        if hybrid:
+            n_seg = int(seg.max()) + 1
+            tot = np.zeros(n_seg, np.int64)
+            grn = np.zeros(n_seg, np.int64)
+        for r in range(0, out.shape[0], self._REFINE_ROWS):
+            r1 = min(out.shape[0], r + self._REFINE_ROWS)
+            block = out[r:r1]
+            pair = (block == green_idx) | (block == other_idx)
+            if not pair.any():
+                continue
+            green = self._exg_strip(r, r1, window) > cutoff
+            green_mask[r:r1] = green
+            if hybrid:
+                in_g = block == green_idx
+                ids = seg[r:r1][in_g]
+                tot += np.bincount(ids, minlength=n_seg)
+                grn += np.bincount(ids[green[in_g]], minlength=n_seg)
+        if hybrid:
+            share = np.where(tot > 0, grn / np.maximum(tot, 1), 1.0)
+            drop = share < min_green_share          # segments that turn wholly to other
+        moved_g = moved_o = 0
+        for r in range(0, out.shape[0], self._REFINE_ROWS):
+            r1 = min(out.shape[0], r + self._REFINE_ROWS)
+            block = out[r:r1]
+            green = green_mask[r:r1]
+            to_g = (block == other_idx) & green
+            if hybrid:
+                to_o = (block == green_idx) & drop[seg[r:r1]]
+            else:
+                to_o = (block == green_idx) & ~green
+            moved_g += int(to_g.sum()); moved_o += int(to_o.sum())
+            block[to_g] = green_idx
+            block[to_o] = other_idx
+        return out, {"to_green": moved_g, "to_other": moved_o, "total": int((class_map > 0).sum())}
 
     def write_qgis_styling(self, qml_path, classes):
         qgis_root = ET.Element("qgis", version="3.28.0", hasScaleBasedVisibilityFlag="0")
@@ -2113,16 +2326,14 @@ class ObiaEngine:
             'strata_without_points': missing, 'seed': st.get("seed"),
         }
 
-    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv'):
+    def read_accuracy_points_csv(self, csv_path):
         """
         Reads point coordinates + a reference class label from a CSV, in the
-        orthomosaic's own CRS (per the plan doc's stated expected format -- this is
-        not a lat/lon-anywhere importer). Column names are matched case-insensitively
-        against a small set of accepted aliases so a reasonable header (x/lon/easting,
-        y/lat/northing, class/label) doesn't force a rename, but a class-name typo is
-        never silently guessed at -- any CSV class name that doesn't exactly match one
-        of valid_class_names raises, listing every mismatch found, so the user fixes
-        the CSV rather than getting a point quietly dropped or mis-labeled.
+        orthomosaic's own CRS (this is not a lat/lon-anywhere importer). Column names are
+        matched case-insensitively against a small set of accepted aliases so a reasonable
+        header (x/lon/easting, y/lat/northing, class/label) doesn't force a rename. A 'crs'
+        column (as written by export_accuracy_points_csv) must match the orthomosaic's.
+        Returns a DataFrame with columns x, y, class (class names stripped).
         """
         if self.ortho_meta is None:
             raise ValueError("Load an orthomosaic before importing ground-truth points.")
@@ -2147,39 +2358,86 @@ class ObiaEngine:
                 f"like 'x'/'y' (or lon/lat, easting/northing) and 'class'. Found columns: {list(df.columns)}"
             )
 
-        csv_classes = set(df[class_col].astype(str).str.strip().unique())
+        crs_col = find_col(['crs'])
+        if crs_col is not None and self.ortho_meta.get('crs') is not None:
+            from pyproj import CRS
+            found = {str(v).strip() for v in df[crs_col].dropna().unique()}
+            ortho = CRS.from_user_input(self.ortho_meta['crs'])
+            wrong = sorted(v for v in found if CRS.from_user_input(v) != ortho)
+            if wrong:
+                raise ValueError(
+                    f"The CSV's points are in {', '.join(wrong)}, but this orthomosaic is in "
+                    f"{ortho.to_string()}. Reproject the points first.")
+
+        out = pd.DataFrame({'x': df[x_col].astype(float), 'y': df[y_col].astype(float),
+                            'class': df[class_col].astype(str).str.strip()})
+        return out[(out['class'] != '') & (out['class'].str.lower() != 'nan')].reset_index(drop=True)
+
+    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv', class_map=None):
+        """
+        Adds the points of a ground-truth CSV (see read_accuracy_points_csv) as labelled
+        accuracy points. class_map: optional {csv class name: class name to use, or None to
+        leave those points out}, from the app's class-matching dialog. After mapping, a
+        class name that doesn't exactly match one of valid_class_names raises, listing every
+        mismatch, so a typo is never silently guessed at. Returns the number imported.
+        """
+        df = self.read_accuracy_points_csv(csv_path)
+        if class_map is not None:
+            df['class'] = df['class'].map(lambda c: class_map.get(c, c))
+            df = df[df['class'].notna()].reset_index(drop=True)
+
         valid_set = set(valid_class_names)
-        mismatched = sorted(csv_classes - valid_set)
+        mismatched = sorted(set(df['class'].unique()) - valid_set)
         if mismatched:
             raise ValueError(
                 f"CSV contains class name(s) that don't exactly match Tab 3's class list: {mismatched}. "
-                f"Expected one of: {sorted(valid_set)}. Fix the CSV's class column (or rename the class "
-                f"in Tab 3) and try again -- class names are matched exactly, not fuzzy-matched, so a "
-                f"mismatch here isn't silently guessed at."
+                f"Expected one of: {sorted(valid_set)}. Match them when importing, fix the CSV, or "
+                f"rename the class in Tab 3."
             )
 
         if self.accuracy_points_gdf is None:
             self.accuracy_points_gdf = self._new_accuracy_points_gdf()
 
         n = len(df)
-        geoms = [Point(x, y) for x, y in zip(df[x_col].astype(float), df[y_col].astype(float))]
+        if n == 0:
+            return 0
+        geoms = [Point(x, y) for x, y in zip(df['x'], df['y'])]
         next_id = self.next_accuracy_point_id
         new_gdf = gpd.GeoDataFrame(
             {
                 'point_id': list(range(next_id, next_id + n)),
-                'reference_class': df[class_col].astype(str).str.strip().tolist(),
+                'reference_class': df['class'].tolist(),
                 'source': [source_label] * n,
                 'predicted_class': [None] * n,
             },
             geometry=geoms, crs=self.ortho_meta['crs']
         )
         self.next_accuracy_point_id = next_id + n
-
         self.accuracy_points_gdf = gpd.GeoDataFrame(
             pd.concat([self.accuracy_points_gdf, new_gdf], ignore_index=True), crs=self.ortho_meta['crs']
         )
         print(f" -> Imported {n} ground-truth point(s) from CSV ({csv_path}).")
         return n
+
+    def export_accuracy_points_csv(self, csv_path):
+        """ Writes the labelled accuracy points as x, y, class (+ point_id, crs) in the
+        orthomosaic's CRS: only the reference labels, never the map's predictions, so
+        another user can import them with import_accuracy_points_csv and assess their
+        own map against the same points. Returns the number written. """
+        gdf = self.accuracy_points_gdf
+        if gdf is None or len(gdf) == 0:
+            return 0
+        lab = gdf[gdf['reference_class'].notna()]
+        crs = self.ortho_meta.get('crs') if self.ortho_meta else None
+        out = pd.DataFrame({
+            'point_id': lab['point_id'].astype(int).values,
+            'x': lab.geometry.x.values,
+            'y': lab.geometry.y.values,
+            'class': lab['reference_class'].astype(str).values,
+            'crs': crs.to_string() if crs is not None else '',
+        })
+        out.to_csv(csv_path, index=False, float_format='%.3f')
+        return len(out)
 
     def add_manual_accuracy_point(self, x, y, reference_class=None, source_label='expert_visual'):
         """ Places a single point directly at a given real-world (x, y) -- the engine
@@ -2264,6 +2522,17 @@ class ObiaEngine:
         transform = self.ortho_meta['transform']
         h, w = classified_raster.shape
         class_lookup = {idx: name for idx, name in enumerate(class_names_ordered, start=1)}
+        # Points outside the processed extent (Process This Extent Only) say nothing about
+        # this map: leave them out instead of counting them as Unclassified.
+        if self.extent is not None:
+            cr = [~transform * (g.x, g.y) for g in labeled.geometry]
+            inside = np.array([0 <= int(r) < h and 0 <= int(c) < w for c, r in cr], dtype=bool)
+            n_out = int((~inside).sum())
+            if n_out:
+                print(f"Accuracy: {n_out} labelled point(s) lie outside the processed extent and are left out.")
+                labeled = labeled[inside].copy()
+            if len(labeled) == 0:
+                raise ValueError("None of the labelled accuracy points lie inside the processed extent.")
 
         predicted = []
         for geom in labeled.geometry:
