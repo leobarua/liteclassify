@@ -7,8 +7,9 @@ title: "Lite Classify"
 abstract: >-
   A desktop application for geographic object-based image analysis (GEOBIA) of
   ultra-high-resolution UAS orthomosaics: SLIC segmentation, object features from RGB and
-  a photogrammetric DSM, class discovery with self-supervised DINOv2 context embeddings,
-  Random Forest classification, and design-based accuracy assessment.
+  a photogrammetric DSM, class discovery with self-supervised DINOv2 (or optional,
+  user-supplied DINOv3) context embeddings, Random Forest classification, pixel-level
+  greenness refinement, and design-based accuracy assessment.
 type: software
 authors:
   - family-names: Barua
@@ -18,16 +19,13 @@ authors:
 repository-code: "https://github.com/leobarua/liteclassify"
 url: "https://leobarua.github.io/liteclassify/manual/"
 license: GPL-3.0-only
-version: "1.1"
-date-released: "2026-10-24"
+version: "1.2"
+date-released: "2026-11-02"
 doi: "10.5281/zenodo.23462352"
 identifiers:
   - type: doi
     value: "10.5281/zenodo.23462352"
     description: "Concept DOI: all versions of Lite Classify (resolves to the newest)"
-  - type: doi
-    value: "10.5281/zenodo.23612117"
-    description: "Version DOI: Lite Classify 1.1"
 keywords:
   - GEOBIA
   - object-based image analysis

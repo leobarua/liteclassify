@@ -2,10 +2,17 @@
 Discover Classes: deep appearance features per segment, grouping, and the edits a user makes
 to the groups (merge, split, ignore, name). No Qt in here -- obia_app.py owns the UI.
 
-Deep features: a frozen DINOv2 ViT-S/14 backbone embeds a square patch of the orthomosaic
-around each segment's centroid, at two sizes (5 m: the object itself; 10 m: its
-surroundings). Grouping clusters segments on those features and/or the 23 classifier
-features, each block scaled to equal weight, with k-means. Groups are deliberately more
+Deep features: a frozen backbone embeds a square patch of the orthomosaic around each
+segment's centroid, at two sizes (5 m: the object itself; 10 m: its surroundings). The
+backbone is DINOv2 ViT-S/14 (bundled, Apache 2.0) or, as an experimental option, a DINOv3
+ViT-S+/16 weights file the user downloaded from Meta under Meta's own DINOv3 License
+(the only DINOv3 offered: ViT-S/16 was tested in the v1.2 builds and dropped). Lite
+Classify never ships, downloads or copies DINOv3 weights: it only reads the file the user
+points it at, through timm's model code (Apache 2.0). Both give 384-number vectors, so
+everything after the backbone is the same.
+
+Grouping clusters segments on those features and/or the 23 classifier features, each
+block scaled to equal weight, with k-means. Groups are deliberately more
 numerous than the final classes: the user merges, splits, ignores and names them.
 """
 import os
@@ -26,6 +33,17 @@ PATCH_SIZES_M = (5.0, 10.0)
 EDGE_VALID_MIN = 0.9          # a segment whose 10 m window is <90 % valid image counts as "edge"
 WEIGHTS_NAME = "dinov2_vits14_pretrain.pth"
 WEIGHTS_URL = "https://dl.fbaipublicfiles.com/dinov2/dinov2_vits14/dinov2_vits14_pretrain.pth"
+
+# Backbones: key -> display label. A deep-feature cache records its key; caches from
+# before v1.2 have none and are DINOv2.
+DEFAULT_BACKBONE = "dinov2_vits14"
+BACKBONES = {                       # offered in the Backbone list
+    "dinov2_vits14": "DINOv2 ViT-S/14 (bundled)",
+    "dinov3_vits16plus": "DINOv3 ViT-S+/16 (your file)",
+}
+_OTHER_LABELS = {"dinov3_vits16": "DINOv3 ViT-S/16"}   # caches made by v1.2 test builds
+DINOV3_LICENSE_URL = "https://ai.meta.com/resources/models-and-libraries/dinov3-license/"
+DINOV3_DOWNLOAD_URL = "https://github.com/facebookresearch/dinov3"   # explains how to request the weights
 GROUP_PALETTE = [
     "#e6194b", "#3cb44b", "#ffe119", "#4363d8", "#f58231", "#911eb4", "#46f0f0", "#f032e6",
     "#bcf60c", "#fabebe", "#008080", "#e6beff", "#9a6324", "#fffac8", "#800000", "#aaffc3",
@@ -51,10 +69,29 @@ def _find_weights():
     return None
 
 
-def load_backbone(device):
-    """ DINOv2 ViT-S/14 from the vendored code in third_party/ plus the pretrained weights. """
+def backbone_label(key):
+    key = key or DEFAULT_BACKBONE
+    return BACKBONES.get(key) or _OTHER_LABELS.get(key, key)
+
+
+def backbone_short(key):
+    """ 'DINOv2' / 'DINOv3 ViT-S/16' etc. for status lines and log messages. """
+    key = key or DEFAULT_BACKBONE
+    return "DINOv2" if key == DEFAULT_BACKBONE else backbone_label(key).split(" (")[0]
+
+
+def is_dinov3(key):
+    return bool(key) and key.startswith("dinov3")
+
+
+def load_backbone(device, backbone=DEFAULT_BACKBONE, weights_path=None):
+    """ The frozen backbone, in eval mode on device. DINOv2: the vendored code in
+    third_party/ plus the bundled weights. DINOv3: timm's model code plus the user's own
+    weights file (weights_path), never downloaded. """
     if torch is None:
         raise RuntimeError("PyTorch is not installed; deep features are unavailable.")
+    if is_dinov3(backbone):
+        return _load_dinov3(device, weights_path, backbone)
     tp = os.path.join(_base_dir(), "third_party")
     if tp not in sys.path:
         sys.path.insert(0, tp)
@@ -71,6 +108,111 @@ def load_backbone(device):
         state = torch.load(path, map_location="cpu", weights_only=True)
     model.load_state_dict(state, strict=True)
     return model.eval().to(device)
+
+
+# --------------------------------------------------------------------------------------
+# DINOv3 (experimental, user-supplied weights)
+# --------------------------------------------------------------------------------------
+
+def _dinov3_state(path):
+    if not path or not os.path.isfile(path):
+        raise ValueError("The DINOv3 weights file was not found. Choose it again in Discover Classes.")
+    try:
+        state = torch.load(path, map_location="cpu", weights_only=True)
+    except Exception:
+        raise ValueError("The file is not a PyTorch weights file (.pth) that Lite Classify can read safely.")
+    if isinstance(state, dict) and isinstance(state.get("model"), dict):
+        state = state["model"]
+    if not isinstance(state, dict):
+        raise ValueError("The file is not a weights file (no tensors inside).")
+    return state
+
+
+def dinov3_variant(state):
+    """ Which supported DINOv3 backbone a state dict holds: 'dinov3_vits16' or
+    'dinov3_vits16plus'. Raises ValueError, in words a user can act on, for anything else
+    (a larger ViT, ConvNeXt, a task head, a Hugging Face conversion, a DINOv2 file). """
+    if "storage_tokens" not in state or "blocks.0.attn.qkv.weight" not in state:
+        if any(k.startswith("embeddings.") or k.startswith("model.") for k in state):
+            raise ValueError("This looks like a Hugging Face conversion. Use Meta's original file "
+                             "(dinov3_vits16plus_pretrain_lvd1689m-….pth).")
+        if any(k.startswith("stages.") or k.startswith("downsample_layers.") for k in state):
+            raise ValueError("This is a DINOv3 ConvNeXt file. Lite Classify uses the DINOv3 ViT-S+/16 backbone "
+                             "(dinov3_vits16plus_pretrain_lvd1689m-….pth).")
+        raise ValueError("This is not a DINOv3 ViT backbone file (it may be a task head or a different model). "
+                         "Use dinov3_vits16plus_pretrain_lvd1689m-….pth.")
+    dim = int(state["cls_token"].shape[-1])
+    depth = len({k.split(".")[1] for k in state if k.startswith("blocks.")})
+    if dim != 384 or depth != 12:
+        raise ValueError(f"This DINOv3 backbone gives {dim}-number vectors with {depth} blocks. Lite Classify "
+                         "uses the small ViT-S+/16 (dinov3_vits16plus_pretrain_lvd1689m-….pth).")
+    return "dinov3_vits16plus" if "blocks.0.mlp.w1.weight" in state else "dinov3_vits16"
+
+
+def check_dinov3_weights(path):
+    """ The backbone key of a user's DINOv3 file, or ValueError explaining what's wrong.
+    Also checks the timm model code is installed. """
+    if torch is None:
+        raise ValueError("PyTorch is not installed; deep features are unavailable.")
+    _timm_dinov3()
+    key = dinov3_variant(_dinov3_state(path))
+    if key not in BACKBONES:
+        raise ValueError("This is DINOv3 ViT-S/16. Lite Classify uses DINOv3 ViT-S+/16: choose "
+                         "dinov3_vits16plus_pretrain_lvd1689m-….pth.")
+    # Meta's file names end in the first 8 hex digits of the file's SHA-256: a mismatch
+    # means a damaged or incomplete download.
+    import re
+    m = re.search(r"-([0-9a-f]{8})\.pth$", os.path.basename(path))
+    if m and not file_sha256(path).startswith(m.group(1)):
+        raise ValueError("The file's checksum does not match its name: the download may be incomplete. "
+                         "Download it again from Meta.")
+    return key
+
+
+def _timm_dinov3():
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from timm.models import eva
+    except ImportError:
+        raise ValueError("The DINOv3 model code (the timm package) is not installed in this build.")
+    return eva
+
+
+def _load_dinov3(device, path, expected=None):
+    eva = _timm_dinov3()
+    state = _dinov3_state(path)
+    key = dinov3_variant(state)
+    if expected and key != expected:
+        raise ValueError(f"The chosen file is {backbone_short(key)}, not {backbone_short(expected)}.")
+    build = eva.vit_small_plus_patch16_dinov3 if key == "dinov3_vits16plus" else eva.vit_small_patch16_dinov3
+    # CLS-token output (as DINOv3 itself and our DINOv2 path return), no classifier head.
+    # The released small models have all-zero q/k/v biases, so the bias-free variant is exact.
+    model = build(pretrained=False, num_classes=0, global_pool="token")
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):    # timm prints a note per skipped zero bias
+        state = eva.checkpoint_filter_fn(state, model)
+    model.load_state_dict(state, strict=True)
+    return model.eval().to(device)
+
+
+_sha_cache = {}
+
+
+def file_sha256(path):
+    """ SHA-256 of a file (cached by path, size and time), recorded with DINOv3 features so a
+    workspace says exactly which weights made them. """
+    st = os.stat(path)
+    k = (os.path.abspath(path), st.st_size, st.st_mtime)
+    if k not in _sha_cache:
+        import hashlib
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        _sha_cache[k] = h.hexdigest()
+    return _sha_cache[k]
 
 
 def seg_fingerprint(segmented_image):
@@ -97,17 +239,21 @@ def edge_flags(cents, valid_mask, pixel_size):
     return vm[rc[:, 0], rc[:, 1]] < EDGE_VALID_MIN
 
 
-def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, progress=None, cancelled=None):
+def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, progress=None, cancelled=None,
+                          backbone=DEFAULT_BACKBONE, weights_path=None):
     """
     cancelled: optional callable checked between batches; when it returns True the run
     stops and None is returned.
-    Returns dict(ids, feats {patch_m: (n, 384) float16}, edge (n,) bool, seconds, device).
+    backbone: a BACKBONES key; for DINOv3, weights_path is the user's weights file.
+    Returns dict(ids, feats {patch_m: (n, 384) float16}, edge (n,) bool, seconds, device,
+    fingerprint, backbone, weights_sha).
     rgb_chw: uint8 (3, H, W) orthomosaic on the segmentation grid.
     """
     t0 = time.time()
     device = "cuda" if (torch is not None and torch.cuda.is_available()) else "cpu"
     ids, cents = segment_centroids(segmented_image)
-    model = load_backbone(device)
+    model = load_backbone(device, backbone, weights_path)
+    weights_sha = file_sha256(weights_path) if is_dinov3(backbone) else ""
     mean = torch.tensor([0.485, 0.456, 0.406], device=device).view(1, 3, 1, 1)
     std = torch.tensor([0.229, 0.224, 0.225], device=device).view(1, 3, 1, 1)
     batch = 128 if device == "cuda" else 32
@@ -131,6 +277,7 @@ def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, prog
                     return None
                 crops = [padded[:, r:r + 2 * half, c:c + 2 * half] for r, c in rc[i:i + batch]]
                 x = torch.from_numpy(np.stack(crops)).to(device).float() / 255.0
+                # 224 px = 16 x 16 DINOv2 patches of 14 px, or 14 x 14 DINOv3 patches of 16 px
                 x = F.interpolate(x, size=(224, 224), mode="bilinear", align_corners=False, antialias=True)
                 x = (x - mean) / std
                 if device == "cuda":
@@ -148,7 +295,7 @@ def compute_deep_features(rgb_chw, segmented_image, valid_mask, pixel_size, prog
     if device == "cuda":
         torch.cuda.empty_cache()
     return dict(ids=ids, feats=feats, edge=edge, seconds=time.time() - t0, device=device,
-                fingerprint=seg_fingerprint(segmented_image))
+                fingerprint=seg_fingerprint(segmented_image), backbone=backbone, weights_sha=weights_sha)
 
 
 def subset_deep(deep, present_ids):
@@ -160,11 +307,14 @@ def subset_deep(deep, present_ids):
     keep = np.isin(deep["ids"], present)
     return dict(ids=deep["ids"][keep], feats={k: v[keep] for k, v in deep["feats"].items()},
                 edge=deep["edge"][keep], seconds=deep["seconds"], device=deep["device"],
-                fingerprint=deep.get("fingerprint"))
+                fingerprint=deep.get("fingerprint"), backbone=deep.get("backbone", DEFAULT_BACKBONE),
+                weights_sha=deep.get("weights_sha", ""))
 
 
 def save_deep_features(path, deep):
     np.savez_compressed(path, ids=deep["ids"], edge=deep["edge"], fingerprint=np.array(deep.get("fingerprint") or ""),
+                        backbone=np.array(deep.get("backbone") or DEFAULT_BACKBONE),
+                        weights_sha=np.array(deep.get("weights_sha") or ""),
                         **{f"f{int(k)}m": v for k, v in deep["feats"].items()})
 
 
@@ -172,7 +322,10 @@ def load_deep_features(path):
     z = np.load(path)
     feats = {float(k[1:-1]): z[k] for k in z.files if k.startswith("f") and k.endswith("m")}
     fp = str(z["fingerprint"]) if "fingerprint" in z.files else ""
-    return dict(ids=z["ids"], feats=feats, edge=z["edge"], seconds=0.0, device="cache", fingerprint=fp)
+    bb = str(z["backbone"]) if "backbone" in z.files else DEFAULT_BACKBONE
+    sha = str(z["weights_sha"]) if "weights_sha" in z.files else ""
+    return dict(ids=z["ids"], feats=feats, edge=z["edge"], seconds=0.0, device="cache", fingerprint=fp,
+                backbone=bb, weights_sha=sha)
 
 
 # --------------------------------------------------------------------------------------

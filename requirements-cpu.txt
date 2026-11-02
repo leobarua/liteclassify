@@ -30,6 +30,10 @@ psutil==7.2.2
 
 # PyTorch, CPU-only build (DINOv2 features; segmentation uses the CPU engine)
 torch==2.6.0+cpu
+torchvision==0.21.0+cpu
+# timm: model code for the optional, user-supplied DINOv3 backbone (Apache 2.0).
+# Its DINOv3 weights are NOT included; see NOTICE.md.
+timm==1.0.30
 
 # Building the .exe (build_exe.py, *.spec)
 pyinstaller==6.21.0
