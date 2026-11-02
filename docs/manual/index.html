@@ -47,7 +47,7 @@
       </ol>
     </li>
   </ol>
-  <p class="toc-meta">Version 1.1 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: a 55&nbsp;ha drone survey in Bay, Laguna, mapped into seven classes.</p>
+  <p class="toc-meta">Version 1.2 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: the 13.5&nbsp;ha CAFS experimental agricultural site, Los Baños, mapped into nine classes.</p>
 </aside>
 
 <main>
@@ -61,21 +61,23 @@
   </div>
   <p class="eyebrow">User manual</p>
   <h1>Turn a drone orthomosaic into a checked land-cover map</h1>
-  <p class="lead">Lite Classify splits an aerial image into objects, describes each one by its colour, texture, shape, height and appearance, helps you find the classes the scene really contains, learns those classes from examples you click, and checks the finished map against an independent sample. This manual walks one real <span data-d="grid.area_ha" data-fmt="f1"></span>-hectare survey through every step: <span data-d="segmentation.segments" data-fmt="int"></span> objects, seven classes, <span data-d="training.total" data-fmt="int"></span> training objects and <span data-d="final.n" data-fmt="int"></span> independently labelled check points.</p>
+  <p class="lead">Lite Classify splits an aerial image into objects, describes each one by its colour, texture, shape, height and appearance, helps you find the classes the scene really contains, learns those classes from examples you click, and checks the finished map against an independent sample. This manual walks one real <span data-d="grid.area_ha" data-fmt="f1"></span>-hectare survey through every step: <span data-d="segmentation.segments" data-fmt="int"></span> objects, nine classes, <span data-d="training.total" data-fmt="int"></span> training objects and <span data-d="final.n" data-fmt="int"></span> independently labelled check points.</p>
   <div class="hero-strip">
-    <figure><img src="img/view_raw.jpg" alt="Orthomosaic crop of a road junction, roofs, bare ground and canopy"><figcaption><b>01</b>Orthomosaic</figcaption></figure>
+    <figure><img src="img/view_raw.jpg" alt="Orthomosaic crop of crop rows, grass strips, bare beds and the road"><figcaption><b>01</b>Orthomosaic</figcaption></figure>
     <figure><img src="img/view_segmented.jpg" alt="The same crop split into segments, each filled with its mean colour"><figcaption><b>02</b>Objects</figcaption></figure>
     <figure><img src="img/view_classified.png" alt="The same crop classified into land-cover classes"><figcaption><b>03</b>Classified</figcaption></figure>
     <figure><img src="img/view_points.jpg" alt="Reference points over the crop, coloured by their labelled class"><figcaption><b>04</b>Checked</figcaption></figure>
   </div>
   <ul class="classes" aria-label="Classes used in the worked example">
-    <li><i style="background:var(--c-canopy)"></i>Natural canopy</li>
-    <li><i style="background:var(--c-agri)"></i>Agricultural</li>
+    <li><i style="background:var(--c-bare)"></i>Bare</li>
+    <li><i style="background:var(--c-crop1)"></i>Crop 1</li>
+    <li><i style="background:var(--c-crop2)"></i>Crop 2</li>
     <li><i style="background:var(--c-grass)"></i>Grass</li>
-    <li><i style="background:var(--c-bare)"></i>Bare soil</li>
-    <li><i style="background:var(--c-waste)"></i>Solid waste</li>
-    <li><i style="background:var(--c-built)"></i>Built-up</li>
-    <li><i style="background:var(--c-stream)"></i>Stream</li>
+    <li><i style="background:var(--c-water)"></i>Water</li>
+    <li><i style="background:var(--c-tree)"></i>Tree</li>
+    <li><i style="background:var(--c-road)"></i>Road</li>
+    <li><i style="background:var(--c-building)"></i>Building</li>
+    <li><i style="background:var(--c-mud)"></i>Mud</li>
   </ul>
   <div class="cards">
     <a class="card" href="#welcome"><span class="k">Part A</span><h3>Getting started</h3><p>Install, meet the worked example, learn the window.</p></a>
@@ -86,7 +88,7 @@
 </section>
 
 <h2 id="welcome"><span class="num">1</span>Welcome</h2>
-<p>Lite Classify is a desktop tool for <strong>geographic object-based image analysis (GEOBIA)</strong> of very-high-resolution drone imagery. It was built to map canopy gaps, restoration patches and land use in tropical landscapes, and it works for any cover types you can recognise by eye in an RGB orthomosaic: canopy, plantations, grass, bare ground, roads, buildings, water.</p>
+<p>Lite Classify is a desktop tool for <strong>geographic object-based image analysis (GEOBIA)</strong> of very-high-resolution drone imagery. It was built to map land cover in tropical landscapes, from canopy gaps and restoration patches to farms and campuses, and it works for any cover types you can recognise by eye in an RGB orthomosaic: trees, crops, grass, bare ground, roads, buildings, water.</p>
 <p><strong>Lite Classify picks up where Lite Flight leaves off.</strong> Plan and fly the survey with Lite Flight, process the photos into an orthomosaic and surface model in your photogrammetry software, then bring both into Lite Classify to map them. It is one self-contained program that runs offline on a single workstation, with no Python, GIS software, account or internet connection needed.</p>
 <p>You work through four tabs, left to right. Each tab hands its result to the next.</p>
 

@@ -1,5 +1,7 @@
 # Manual figure tools
 
+> **v1.2:** the manual now uses the CAFS worked example. `build_figures_cafs.py` (to be written) replaces the Phileco scripts described below.
+
 Everything in `docs/manual/img/` (except `img/brand/`) and every number in
 `docs/manual/manual_data.js` comes from the Bay, Laguna survey's saved workspace
 (`Phileco_ortho_workspace/`: 10 cm grid, 63,645 segments, 622 training objects, 7 classes,

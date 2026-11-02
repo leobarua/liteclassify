@@ -56,7 +56,7 @@
     <li><a href="#sieve"><span class="n">5.10</span>Generalisation</a></li>
     <li><a href="#accuracy"><span class="n">5.11</span>Accuracy assessment</a></li>
   </ol>
-  <p class="toc-meta">Version 1.1 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: a 55&nbsp;ha drone survey in Bay, Laguna, mapped into seven classes.</p>
+  <p class="toc-meta">Version 1.2 <span id="dl-wrap" hidden>(downloads: <span id="dl-count"></span>)</span> · Worked example: the 13.5&nbsp;ha CAFS experimental agricultural site, Los Baños, mapped into nine classes.</p>
 </aside>
 
 <main>
@@ -69,11 +69,11 @@
 <h2 id="objects"><span class="num">5.1</span>Objects, not pixels</h2>
 <p>Object-based image analysis classifies groups of similar neighbouring pixels instead of single pixels. A group carries far more evidence than a pixel: its average colour, how varied it is inside, its texture, its shape, its height and how it compares with its neighbours. It also removes the scattered single-pixel speckle that pixel-by-pixel maps suffer from.</p>
 <div class="strip c3">
-  <figure><img src="img/obj_pixels.jpg" alt="Roofs and canopy at 10 cm"><figcaption><b>Pixels</b> 10 cm each. A single pixel says little.</figcaption></figure>
+  <figure><img src="img/obj_pixels.jpg" alt="Crop beds and grass at 5 cm"><figcaption><b>Pixels</b> 5 cm each. A single pixel says little.</figcaption></figure>
   <figure><img src="img/obj_boundaries.jpg" alt="Same view with yellow segment outlines"><figcaption><b>Segments</b> Groups that share colour and position.</figcaption></figure>
   <figure><img src="img/obj_means.jpg" alt="Same view with each segment filled with its mean colour"><figcaption><b>Objects</b> Each now has one colour, one texture, one shape.</figcaption></figure>
 </div>
-<p>At drone resolution a tree crown or roof spans hundreds of pixels, so objects match real things on the ground. Resolution can also be too fine. Below roughly 1–5 cm per pixel the segmenter starts outlining individual leaves and roof sheets, and objects stop meaning anything. About 5–10 cm per pixel suits crown- and gap-scale work. The worked example is captured at 3.3 cm and segmented at 10 cm.</p>
+<p>At drone resolution a tree crown or roof spans hundreds of pixels, so objects match real things on the ground. Resolution can also be too fine. Below roughly 1–5 cm per pixel the segmenter starts outlining individual leaves and roof sheets, and objects stop meaning anything. About 5–10 cm per pixel suits field-, bed- and crown-scale work. The worked example is captured at 2.16 cm and segmented at 5 cm.</p>
 <div class="note"><p><strong>RGB only.</strong> Consumer drone cameras record red, green and blue, with no near-infrared. That rules out NDVI, so Lite Classify leans on visible-light vegetation indices, texture, height and learned appearance instead.</p></div>
 
 <h2 id="slic"><span class="num">5.2</span>Segmentation with SLIC</h2>
@@ -82,13 +82,13 @@
 <p><em>S</em> is the seed spacing and <em>m</em> is <strong>compactness</strong>. CIELAB is used because distances in it track how different two colours look to a person. After about ten rounds of moving seeds and reassigning pixels, a clean-up pass makes every segment a single connected piece.</p>
 
 <h3>Number of segments: the scale of the map</h3>
-<p>This one setting decides how big objects are, and it is the most important choice in OBIA. Too many, and crowns and roofs are cut into fragments (more labelling, but edges are kept). Too few, and objects straddle two cover types, which no classifier can fix. The worked example asked for 60,000 segments over <span data-d="grid.area_ha" data-fmt="f0"></span> ha and got <span data-d="segmentation.segments" data-fmt="int"></span>, about <span data-d="segmentation.mean_area_m2" data-fmt="f1"></span> m² each: part of a crown, part of a roof. That is small on purpose: the stream is only a few objects wide.</p>
+<p>This one setting decides how big objects are, and it is the most important choice in OBIA. Too many, and crowns and roofs are cut into fragments (more labelling, but edges are kept). Too few, and objects straddle two cover types, which no classifier can fix. The worked example asked for <span data-d="segmentation.requested" data-fmt="int"></span> segments over <span data-d="grid.area_ha" data-fmt="f1"></span> ha and got <span data-d="segmentation.segments" data-fmt="int"></span>, about <span data-d="segmentation.mean_area_m2" data-fmt="f1"></span> m² each: part of a bed, part of a crown or a roof. That is small on purpose: crop beds, ditches and paths are only a few objects wide.</p>
 <div class="strip c3">
   <figure><img src="img/seg_k20000.jpg" alt="Segments at a 20,000 target"><figcaption><b>20,000</b> ~<span data-d="seg_series.k20000.mean_area_m2" data-fmt="f0"></span> m² objects. Roof rows merge with the gaps between them.</figcaption></figure>
   <figure><img src="img/seg_k60000.jpg" alt="Segments at a 60,000 target"><figcaption><b>60,000 (used here)</b> ~<span data-d="seg_series.k60000.mean_area_m2" data-fmt="f0"></span> m² objects. Roof sections and crowns separate.</figcaption></figure>
   <figure><img src="img/seg_k150000.jpg" alt="Segments at a 150,000 target"><figcaption><b>150,000</b> ~<span data-d="seg_series.k150000.mean_area_m2" data-fmt="f0"></span> m² objects. Roofs split into many tiles.</figcaption></figure>
 </div>
-<p class="caption">The same 48 × 36 m of roofs beside canopy, segmented on its own at each scene-wide density.</p>
+<p class="caption">The same patch of fields and buildings, segmented on its own at each scene-wide density.</p><!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run -->
 
 <h3>Compactness and sigma</h3>
 <p><strong>Compactness</strong> trades colour against regularity: low values let segments follow colour edges closely; high values make them blocky and even. <strong>Sigma</strong> blurs the image slightly before clustering so that fine texture and sensor noise do not seed spurious segments.</p>
@@ -143,10 +143,10 @@
 <p>The three vegetation indices use chromatic coordinates, each band divided by R + G + B, so that a shaded leaf and a sunlit leaf score alike. Random Forest needs no rescaling, so features go in as measured.</p>
 
 <h3 id="feature-res">Measuring finer than you segment</h3>
-<p>Coarsening the image keeps objects crown-sized, but it also throws away the fine detail texture is computed from. Lite Classify separates the two: segments are drawn on the working grid, and colour and texture are read from the original file at the finer resolution you set in <span class="ui">Colour/texture at</span>. In the worked example, outlines come from the 10 cm grid and every object's colour and texture from the native 3.3 cm pixels, about nine times as many pixels per object. Height features always use the DSM on the working grid.</p>
+<p>Coarsening the image keeps objects crown-sized, but it also throws away the fine detail texture is computed from. Lite Classify separates the two: segments are drawn on the working grid, and colour and texture are read from the original file at the finer resolution you set in <span class="ui">Colour/texture at</span>. In the worked example, outlines come from the 5 cm grid and every object's colour and texture from the native 2.16 cm pixels, about five times as many pixels per object. Height features always use the DSM on the working grid.</p>
 
 <h3 id="explorer">Feature explorer</h3>
-<p>Pick a feature to see its value for every object in one 128 × 96 m patch of the worked example: a road junction with roofs and a shed (top left and left), bare tracks, natural canopy and grass in the middle, and an agroforestry stand to the right.</p>
+<p>Pick a feature to see its value for every object in one patch of the worked example: crop beds, grass strips, bare and muddy ground, a road, roofs and trees.</p><!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run -->
 <div class="panel" id="feature-explorer" data-start="hag_mean">
   <div class="fx">
     <div class="fx-list"></div>
@@ -159,34 +159,34 @@
 <p>Texture comes from a <strong>grey-level co-occurrence matrix</strong> (GLCM). The object is turned to grey, reduced to 15 grey levels, and every pair of touching pixels is tallied by its two levels, in four directions. A smooth surface puts all its pairs on the diagonal (same level next to same level). A busy one scatters them.</p>
 <div class="glcm">
   <div class="glcm-card" data-glcm="canopy">
-    <h4>A canopy object</h4>
-    <figure style="margin:0"><img src="img/glcm_canopy.png" alt="A canopy segment outlined in magenta, at 3.3 cm"><figcaption>Outlined object, at the 3.3 cm feature resolution</figcaption></figure>
-    <div><div class="glcm-grid" aria-label="Co-occurrence matrix of the canopy object"></div><p class="small" style="margin-top:4px">Co-occurrence: spread wide</p></div>
+    <h4>A tree object</h4>
+    <figure style="margin:0"><img src="img/glcm_canopy.png" alt="A tree segment outlined in magenta, at 2.16 cm"><figcaption>Outlined object, at the 3.3 cm feature resolution</figcaption></figure>
+    <div><div class="glcm-grid" aria-label="Co-occurrence matrix of the tree object"></div><p class="small" style="margin-top:4px">Co-occurrence: spread wide</p></div>
     <dl class="glcm-stats"></dl>
   </div>
   <div class="glcm-card" data-glcm="roof">
     <h4>A roof object</h4>
-    <figure style="margin:0"><img src="img/glcm_roof.png" alt="A roof segment outlined in magenta, at 3.3 cm"><figcaption>Outlined object, at the 3.3 cm feature resolution</figcaption></figure>
+    <figure style="margin:0"><img src="img/glcm_roof.png" alt="A roof segment outlined in magenta, at 2.16 cm"><figcaption>Outlined object, at the 3.3 cm feature resolution</figcaption></figure>
     <div><div class="glcm-grid" aria-label="Co-occurrence matrix of the roof object"></div><p class="small" style="margin-top:4px">Co-occurrence: one cell</p></div>
     <dl class="glcm-stats"></dl>
   </div>
 </div>
-<p style="margin-top:18px">Green-painted roofs can come close to canopy in mean colour. Texture separates them at once: the canopy's contrast here is about 80 times the roof's. Objects smaller than 16 pixels get neutral texture values.</p>
+<p style="margin-top:18px">A painted or weathered roof can come close to a crown in mean colour. Texture separates them at once: the crown's contrast is many times the roof's.<!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run --> Objects smaller than 16 pixels get neutral texture values.</p>
 <details class="why"><summary>Exactly how Lite Classify computes texture</summary>
 <p>Luminance is 0.299R + 0.587G + 0.114B. Grey levels 1–15 hold the object's pixels; level 0 marks pixels outside the object and is dropped, then the matrix is renormalised so only pairs inside the object count. Pairs are one pixel apart at 0°, 45°, 90° and 135°, counted symmetrically. Contrast, homogeneity and energy are averaged over the four directions. Entropy is computed in bits and summed over the four directions, so its values run about four times a single-direction entropy; the classifier is unaffected by that scale.</p>
 </details>
 
 <h3 id="context">Context and height</h3>
-<p>Two features compare each object with the objects it touches, using a <strong>region adjacency graph</strong> (a list of which objects share a border). An object darker and lower than everything around it is a canopy-gap candidate wherever it sits on a slope.</p>
+<p>Two features compare each object with the objects it touches, using a <strong>region adjacency graph</strong> (a list of which objects share a border). An object darker and lower than everything around it, such as a ditch or a pond edge, stands out wherever it sits on a slope.</p>
 <p>A DSM is the height of the top surface, not the ground, so absolute height mixes terrain with the objects on it. <strong>Height above ground</strong> removes the terrain. Lite Classify estimates a ground surface from the DSM itself: it takes the lowest value in each ~1 m block, then a <em>morphological opening</em> over 40 m (a moving minimum, then a moving maximum) that removes anything narrower than 40 m, such as crowns and buildings, and smooths the result. Each object's height above that surface is <code>hag_mean</code>. Under closed canopy wider than 40 m the ground estimate rides up on the canopy and heights are underestimated, the usual limit of ground estimation from a DSM alone.</p>
 <div class="strip c3">
   <figure><img src="img/dsm_crop.jpg" alt="DSM heights over the patch"><figcaption><b>DSM</b> <span data-d="dsm_crop.lo" data-fmt="f0"></span>–<span data-d="dsm_crop.hi" data-fmt="f0"></span> m. Terrain and objects mixed together.</figcaption></figure>
   <figure><img src="img/slope_crop.jpg" alt="Slope over the patch"><figcaption><b>Slope</b> 0–60°. Crown sides and roof edges light up.</figcaption></figure>
-  <figure><img src="img/feat/hag_mean.jpg" alt="Height above ground per object"><figcaption><b>Height above ground</b> Roofs and canopy stand out; the road and tracks sit near zero.</figcaption></figure>
+  <figure><img src="img/feat/hag_mean.jpg" alt="Height above ground per object"><figcaption><b>Height above ground</b> Roofs and trees stand out; fields, the road and bare ground sit near zero.</figcaption></figure>
 </div>
 
 <h2 id="dinov2"><span class="num">5.4</span>Appearance with DINOv2 and DINOv3</h2>
-<p>The 24 features describe each object on its own, and at this scale an object is about the size of part of a crown. Some cover types are defined by their <em>surroundings</em> and <em>pattern</em> instead: a planted coconut stand and natural canopy beside it are both closed, green and tall, but one has regular, evenly spaced crowns and the other does not. To capture that, Lite Classify adds a learned description of what each object and its neighbourhood look like.</p>
+<p>The 24 features describe each object on its own, and at this scale an object is about the size of part of a crop bed. Some cover types are defined by their <em>surroundings</em> and <em>pattern</em> instead: two crops can be equally green and equally low, but one grows in regular rows and the other does not, and a grass strip looks like a crop leaf in close-up. To capture that, Lite Classify adds a learned description of what each object and its neighbourhood look like.</p>
 <p><strong>DINOv2</strong> (Meta AI, 2023) is a <strong>vision transformer</strong> trained on 142 million images <em>without labels</em>, by learning to give matching descriptions to different crops of the same picture. Lite Classify uses its small version, ViT-S/14, as a frozen <strong>feature extractor</strong>: it never trains it, fine-tunes it, or uses it to classify.</p>
 <figure class="wide">
 <svg viewBox="0 0 1060 250" role="img" aria-label="Each object's 5 m and 10 m patches pass through DINOv2 to 384 numbers, reduced by PCA for Discover and for the classifier" style="width:100%;height:auto;font-family:'Public Sans',sans-serif">
@@ -232,7 +232,7 @@
   <li><strong>Two patch sizes, on purpose.</strong> The 5 m patch describes the object and its edge; the 10 m patch describes the stand pattern around it. Both are cut from the orthomosaic on the working grid, centred on the object.</li>
   <li><strong>Why a transformer and not hand-made texture.</strong> GLCM texture counts neighbouring pixel pairs inside one object. Self-attention relates every part of the patch to every other part, so it captures arrangement: rows, spacing, crown shape, how an object sits among its neighbours.</li>
   <li><strong>Why it needs no labels.</strong> Because DINOv2 learned from unlabelled images, its descriptions are general: they transfer to aerial scenes it never saw, without retraining. Your labels are only needed later, by the Random Forest.</li>
-  <li><strong>Where it pays off.</strong> In the worked example, the pair natural canopy vs. agricultural, which covers about 79% of the map, is separated mainly by these appearance components; no colour, texture or height feature comes close (<a href="#separability">5.7</a>).</li>
+  <li><strong>Where it pays off.</strong> In the worked example, the two crops are told apart mainly by pattern, which is what these appearance components carry; the separability check shows which features lead each pair (<a href="#separability">5.7</a>).</li><!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run -->
 </ul>
 <div class="note"><p><strong>Is it a CNN?</strong> No. A convolutional neural network (CNN) builds its picture from many layers of small sliding filters. DINOv2 ViT-S/14 is a vision transformer: its one convolution layer only cuts the patch into 14 × 14 px tiles (about 1% of its weights), and everything after that is attention. "Deep learning features" is accurate; "CNN" is not.</p></div>
 <details class="why"><summary>Cost, offline use, and limits</summary>
@@ -259,11 +259,11 @@
   <figure><img src="img/disc_groups_scene.jpg" alt="The survey coloured by Discover group"><figcaption><b>The groups, scene-wide</b> <span data-d="discover.requested"></span> requested, <span data-d="discover.groups"></span> after splitting; <span data-d="discover.named"></span> were named.</figcaption></figure>
   <figure><img src="img/disc_groups_crop.jpg" alt="Group colours over the feature-explorer patch"><figcaption><b>Close-up</b> The same patch as the feature explorer. Groups follow cover type and pattern, not just colour.</figcaption></figure>
 </div>
-<div class="chip-strip"><img src="img/disc_chips_G02.jpg" alt="Eight tiles from a group named Agricultural"><p><b>A group named Agricultural:</b> regular coconut and banana crowns.</p></div>
-<div class="chip-strip"><img src="img/disc_chips_G03.jpg" alt="Eight tiles from a group named Natural canopy"><p><b>A group named Natural canopy:</b> irregular, mixed crowns.</p></div>
-<div class="chip-strip"><img src="img/disc_chips_G20a.jpg" alt="Eight tiles from a group named Built-up"><p><b>A group named Built-up:</b> roofs, the road and concrete.</p></div>
-<div class="chip-strip"><img src="img/disc_chips_G19b.jpg" alt="Eight tiles from a group named Solid waste"><p><b>A group named Solid waste:</b> split from a bare-ground group by appearance.</p></div>
-<p>In the worked example, two of the seven classes came out of the groups rather than out of a list made in advance: <strong>Agricultural</strong> (planted coconut, banana and fruit trees, distinct from natural canopy) and <strong>Solid waste</strong> (exposed refuse, distinct from the bare soil around it).</p>
+<div class="chip-strip"><img src="img/disc_chips_crop1.jpg" alt="Eight tiles from a group named Crop 1"><p><b>A group named Crop 1:</b> one crop's regular rows.</p></div>
+<div class="chip-strip"><img src="img/disc_chips_crop2.jpg" alt="Eight tiles from a group named Crop 2"><p><b>A group named Crop 2:</b> taller, broad-leaved plants in a looser pattern.</p></div>
+<div class="chip-strip"><img src="img/disc_chips_building.jpg" alt="Eight tiles from a group named Building"><p><b>A group named Building:</b> roofs and sheds.</p></div>
+<div class="chip-strip"><img src="img/disc_chips_mud.jpg" alt="Eight tiles from a group named Mud"><p><b>A group named Mud:</b> wet, dark ground beside water.</p></div>
+<p>In the worked example, the groups split the fields further than a list made in advance would have: two crops with different row patterns became <strong>Crop 1</strong> and <strong>Crop 2</strong>, and wet, dark ground became <strong>Mud</strong>, distinct from dry bare soil.</p><!-- TODO(cafs-figures): pick the four chip strips from the CAFS groups and check this paragraph -->
 
 <h2 id="rf"><span class="num">5.6</span>Random Forest</h2>
 <p>You label a modest number of example objects per class. Lite Classify trains a <strong>Random Forest</strong> of 100 decision trees on their feature lists and asks it to label every object in the scene.</p>
@@ -280,7 +280,7 @@
     <g><rect x="22" y="168" width="10" height="10" rx="2" fill="#9ccc65"/><rect x="38" y="168" width="132" height="10" rx="2" fill="#eef3ef"/></g>
     <g><rect x="22" y="186" width="10" height="10" rx="2" fill="#8d6e63"/><rect x="38" y="186" width="132" height="10" rx="2" fill="#eef3ef"/></g>
     <g><rect x="22" y="204" width="10" height="10" rx="2" fill="#d32f2f"/><rect x="38" y="204" width="132" height="10" rx="2" fill="#eef3ef"/></g>
-    <text x="22" y="238" fill="#76817b">… 622 rows in the example</text>
+    <text x="22" y="238" fill="#76817b">… 1,414 rows in the example</text>
   </g>
   <g fill="none" stroke="#44504a" stroke-width="1.25"><path d="M198 152H236" marker-end="url(#ra)"/><path d="M606 152H644" marker-end="url(#ra)"/><path d="M842 152H880" marker-end="url(#ra)"/></g>
   <g font-size="12" fill="#44504a">
@@ -291,30 +291,30 @@
   <g font-size="12.5" fill="#44504a">
     <rect x="652" y="52" width="190" height="200" rx="10" fill="#fff" stroke="#44504a"/>
     <text x="666" y="78" font-weight="700" fill="#17201c" font-family="Archivo, sans-serif" font-size="15">One object's votes</text>
-    <rect x="666" y="98" width="110" height="16" rx="3" fill="#c0ca33"/><text x="784" y="111">64</text>
-    <rect x="666" y="122" width="48" height="16" rx="3" fill="#1b5e20"/><text x="722" y="135">28</text>
-    <rect x="666" y="146" width="12" height="16" rx="3" fill="#9ccc65"/><text x="686" y="159">7</text>
-    <rect x="666" y="170" width="4" height="16" rx="3" fill="#8d6e63"/><text x="678" y="183">1</text>
+    <rect x="666" y="98" width="110" height="16" rx="3" fill="#aaff00"/><text x="784" y="111">64</text>
+    <rect x="666" y="122" width="48" height="16" rx="3" fill="#00aa00"/><text x="722" y="135">28</text>
+    <rect x="666" y="146" width="12" height="16" rx="3" fill="#ffff00"/><text x="686" y="159">7</text>
+    <rect x="666" y="170" width="4" height="16" rx="3" fill="#a0703c"/><text x="678" y="183">1</text>
     <text x="666" y="226" fill="#76817b">illustrative counts</text>
   </g>
   <g font-size="12.5" fill="#44504a">
     <rect x="888" y="98" width="164" height="108" rx="10" fill="#f4f6dc" stroke="#9ea52a" stroke-width="2"/>
-    <text x="970" y="140" text-anchor="middle" font-weight="700" fill="#17201c" font-family="Archivo, sans-serif" font-size="16">Agricultural</text>
+    <text x="970" y="140" text-anchor="middle" font-weight="700" fill="#17201c" font-family="Archivo, sans-serif" font-size="16">Crop 1</text>
     <text x="970" y="162" text-anchor="middle">majority wins</text>
   </g>
   <text x="425" y="280" text-anchor="middle" font-size="12" fill="#76817b">the questions inside each tree are learned from the data; those shown are examples</text>
 </svg>
 </figure>
-<p>Why this and not hand-written rules such as "brightness below 50 means gap"? Rules are clear but brittle: a change in light breaks them, and they do not scale to 44 features and seven classes. A Random Forest learns the combinations for you. Training each tree on a random resample of your examples, with a random subset of features at each split, keeps it from memorising noise. It tolerates correlated features, needs no scaling, works with a few hundred examples, and retrains in seconds. The vote shares also tell Lite Classify which objects the model is least sure about, which is how <span class="ui">What to Label Next</span> picks its suggestions.</p>
+<p>Why this and not hand-written rules such as "brightness below 50 means gap"? Rules are clear but brittle: a change in light breaks them, and they do not scale to 44 features and nine classes. A Random Forest learns the combinations for you. Training each tree on a random resample of your examples, with a random subset of features at each split, keeps it from memorising noise. It tolerates correlated features, needs no scaling, works with a few hundred examples, and retrains in seconds. The vote shares also tell Lite Classify which objects the model is least sure about, which is how <span class="ui">What to Label Next</span> picks its suggestions.</p>
 
 <h2 id="separability"><span class="num">5.7</span>Class separability</h2>
 <p>Before you invest in labelling and checking, <span class="ui">Check Class Separability</span> reports whether your training samples can support the class list. For every pair of classes it computes the <strong>Jeffries–Matusita (JM) distance</strong> from the labelled objects: 0 means the two are identical in feature space, 2 means completely distinct (1.9 or more good, 1.7–1.9 fair, below 1.7 poor). The score is cross-validated: each pair is separated along the best direction found on part of its samples and scored on the rest. With dozens of features and a few hundred samples, the classic full-dimensional JM (used up to v1.1) reaches 2 for almost any pair, even a class split against itself, so it cannot point out a weak pair; the cross-validated score can, and errs on the cautious side. It also ranks, for each pair, which single features separate it best, and says so in a sentence.</p>
 <figure>
-  <img src="img/separability_table.jpg" alt="The pairwise JM table and the closest pairs for the worked example's seven classes">
-  <figcaption><b>The worked example's separability.</b> Every pair scores 1.98 or more on 44 features; the three closest pairs all involve Bare soil, the class that turned out weakest in the accuracy check.</figcaption>
+  <img src="img/separability_table.jpg" alt="The pairwise JM table and the closest pairs for the worked example's nine classes">
+  <figcaption><b>The worked example's separability.</b> The pairwise table and the closest pairs on 44 features.</figcaption><!-- TODO(cafs-figures): name the closest pairs from the cross-validated CAFS table -->
 </figure>
 <p>The signature plot for each pair shows the class means feature by feature, most telling on the left. Pick a pair:</p>
-<div class="gallery" data-sep data-start-a="Natural canopy" data-start-b="Agricultural">
+<div class="gallery" data-sep data-start-a="Grass" data-start-b="Bare">
   <figure class="g-main"><img src="" alt=""><figcaption></figcaption></figure>
   <div class="g-bar">
     <button class="g-step" type="button" data-step="-1" aria-label="Previous pair">‹</button>
@@ -323,8 +323,8 @@
   </div>
   <div class="g-thumbs" role="tablist" aria-label="Class pairs"></div>
 </div>
-<p><strong>Natural canopy vs. Agricultural</strong> is led entirely by appearance components; colour, texture and height features come far down the ranking. <strong>Grass vs. Bare soil</strong> is led by greenness (ExG, NGRDI, VARI) and height above ground. That split, material differences carried by the classic features and pattern differences carried by DINOv2, is the clearest single argument for the appearance features.</p>
-<div class="warn"><p><strong>Read the ranking, not the number.</strong> With many features and few samples per class, the multivariate JM distance saturates near 2.00 even for pairs the classifier still confuses: natural canopy and agricultural score 2.00 yet trade 19 reference points in the matrix. The order of the closest pairs and the per-feature ranking stay informative. A class with fewer samples than features (here Stream, 20 samples against 44 features) is flagged as less reliable.</p></div>
+<p><strong>Grass vs. Bare</strong> is led by greenness (ExG, NGRDI, VARI), the material difference the classic features are built to carry, and the same difference the greenness refinement uses pixel by pixel (<a href="#greenness">5.9</a>). <strong>Crop 1 vs. Crop 2</strong> is a pattern difference, which the appearance components carry. That split between material and pattern is the clearest single argument for the appearance features.</p><!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run -->
+<div class="warn"><p><strong>Read the ranking alongside the number.</strong> The cross-validated score no longer saturates at 2.00 the way the v1.1 score did, but it is still estimated from your training samples, not from the map. The order of the closest pairs and the per-feature ranking are the most useful part. A class with few samples (here Water, Tree and Mud, 48 each) gives a noisier score.</p></div>
 
 <h2 id="retraining"><span class="num">5.8</span>Why retraining matters</h2>
 <p>The first model rarely gets every class right. It mislabels objects unlike anything in your first examples. Every classification run shows you where those errors are, and <strong>retraining</strong> fixes them: add the misclassified objects as samples under their correct class, train again, classify again.</p>
@@ -333,7 +333,7 @@
   <div class="top"><img src="img/full_zoom.png" alt="The same area classified by the final model"></div>
   <div class="bar"></div><span class="tag l">First model · <span data-d="sparse_example.samples"></span> objects</span><span class="tag r">Final model · <span data-d="training.total" data-fmt="int"></span> objects</span>
 </div>
-<p class="caption" style="margin-top:8px">Drag across the image. A first model on five objects per class mixes up canopy, agroforestry and grass and scatters Bare soil along the roads; the final model separates them.</p>
+<p class="caption" style="margin-top:8px">Drag across the image. A first model on five objects per class mixes up the crops, grass and bare beds; the final model separates them.<!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run --></p>
 
 <div class="demo">
   <p class="tagline">Simulated from the worked example · not a recorded history</p>
@@ -347,7 +347,7 @@
     <div class="table-wrap"><table><thead><tr><th>Round</th><th class="num">Training objects (mean)</th><th class="num">Overall accuracy (mean)</th><th class="num">Range</th></tr></thead><tbody></tbody></table></div>
   </details>
 </div>
-<p><strong>The first rounds matter most.</strong> Accuracy climbs from <span data-d="simulation.rounds.0.oa_mean" data-fmt="pct0"></span> on 35 objects to <span data-d="simulation.rounds.2.oa_mean" data-fmt="pct0"></span> by round 3, then levels off near <span data-d="simulation.rounds.7.oa_mean" data-fmt="pct0"></span>. Later rounds still add samples, but each fixes less.</p>
+<p><strong>The first rounds matter most.</strong> Accuracy climbs from <span data-d="simulation.rounds.0.oa_mean" data-fmt="pct0"></span> on <span data-d="simulation.rounds.0.samples" data-fmt="int"></span> objects to <span data-d="simulation.rounds.2.oa_mean" data-fmt="pct0"></span> by round 3, then levels off near <span data-d="simulation.rounds.7.oa_mean" data-fmt="pct0"></span>. Later rounds still add samples, but each fixes less.</p>
 <p><strong>Targeted samples beat sheer numbers.</strong> The replays come within about a point of the full <span data-d="training.total" data-fmt="int"></span>-object model (<span data-d="simulation.final_full.oa" data-fmt="pct0"></span>) with only about <span data-d="simulation.rounds.7.samples" data-fmt="int"></span> objects, chosen because the model got them wrong.</p>
 <p><strong>Start-up luck fades.</strong> In round 1 the replays range from <span data-d="simulation.rounds.0.oa_min" data-fmt="pct0"></span> to <span data-d="simulation.rounds.0.oa_max" data-fmt="pct0"></span>, depending on which five objects per class happened to be picked. By the last rounds they sit within a few points of each other.</p>
 <div class="panel">
@@ -355,7 +355,7 @@
   <p class="chart-sub">Area-weighted share of each class's reference area the map finds. Round 1 is the mean of the replays.</p>
   <div class="chart" id="chart-pa"></div>
 </div>
-<p>Natural canopy and Built-up gain the most: five objects cannot cover every crown type, or roofs, roads and concrete at once. Stream goes the other way: with only 20 labelled objects and a channel a few objects wide, its score swings with each sample, and it ends as the least complete class. More samples cannot fix a feature narrower than the segments; a finer working grid can.</p>
+<p>Classes that cover many looks gain the most: five objects cannot cover every stage of a crop, or every kind of bare and muddy ground. Classes narrower than the segments go the other way: more samples cannot fix a grass strip thinner than an object; the greenness refinement (<a href="#greenness">5.9</a>) or a finer working grid can.</p><!-- TODO(cafs-figures): name the classes that gain most from the CAFS replay -->
 <div class="note"><p><strong>The rule that follows:</strong> after each run, do not just fix the most visible blotch. Pan the whole scene, list the <em>kinds</em> of mistakes, and add a few samples of each kind from several places. Then measure with the Accuracy tab rather than by eye.</p></div>
 <div class="gallery">
   <figure class="g-main"><img src="" alt=""><figcaption></figcaption></figure>
@@ -363,7 +363,7 @@
     <button class="g-step" type="button" data-step="-1" aria-label="Previous">‹</button>
     <div class="g-thumbs" role="tablist" aria-label="Replay rounds">
       <button type="button" data-thumb="img/sim_round_1.png" data-src="img/sim_round_1.png" data-alt="Map after simulated round 1" data-cap="<b>Round 1</b> · 35 objects. One of the replays, whole scene.">Round 1</button>
-      <button type="button" data-thumb="img/sim_round_3.png" data-src="img/sim_round_3.png" data-alt="Map after simulated round 3" data-cap="<b>Round 3.</b> Canopy and agroforestry begin to settle.">Round 3</button>
+      <button type="button" data-thumb="img/sim_round_3.png" data-src="img/sim_round_3.png" data-alt="Map after simulated round 3" data-cap="<b>Round 3.</b> The crops and bare beds begin to settle.">Round 3</button>
       <button type="button" data-thumb="img/sim_round_8.png" data-src="img/sim_round_8.png" data-alt="Map after simulated round 8" data-cap="<b>Round 8.</b> Close to the final map.">Round 8</button>
       <button type="button" data-thumb="img/final_map.png" data-src="img/final_map.png" data-alt="The workspace's final map" data-cap="<b>The workspace's map</b> · <span>622</span> objects.">Final</button>
     </div>
@@ -388,16 +388,16 @@
 
 <h2 id="sieve"><span class="num">5.10</span>Generalisation</h2>
 <p>Even a good map has isolated objects labelled differently from everything around them. The <strong>sieve</strong> removes connected patches of one class smaller than a pixel threshold and hands them to the surrounding class. This sets a <strong>minimum mapping unit</strong> without blurring real boundaries, because it only ever moves whole small patches.</p>
-<div class="compare" data-label="Compare no sieve with a 2,000-pixel sieve">
+<div class="compare" data-label="Compare no sieve with a 4,000-pixel sieve">
   <img src="img/sieve_0.png" alt="Classification with no sieve">
-  <div class="top"><img src="img/sieve_2000.png" alt="Classification after a 2,000-pixel sieve"></div>
-  <div class="bar"></div><span class="tag l">No sieve</span><span class="tag r">Sieve 2,000 px (20 m²)</span>
+  <div class="top"><img src="img/sieve_4000.png" alt="Classification after a 4,000-pixel sieve"></div>
+  <div class="bar"></div><span class="tag l">No sieve</span><span class="tag r">Sieve 4,000 px (10 m²)</span>
 </div>
 <div class="table-wrap"><table>
-  <thead><tr><th class="num">Sieve (px)</th><th class="num">Area at 10 cm (m²)</th><th class="num">Map pixels changed</th><th class="num">Overall accuracy (area-weighted)</th></tr></thead>
+  <thead><tr><th class="num">Sieve (px)</th><th class="num">Area at 5 cm (m²)</th><th class="num">Map pixels changed</th><th class="num">Overall accuracy (area-weighted)</th></tr></thead>
   <tbody id="sieve-table"></tbody>
 </table></div>
-<p>Objects in the worked example average about <span data-d="segmentation.mean_area_m2" data-fmt="f1"></span> m² (<span data-d="segmentation.mean_area_px" data-fmt="int"></span> pixels), so even a 2,000 px sieve changes under 3% of the map and moves accuracy by less than a point either way. The example was assessed with no sieve. Set the sieve for how the map will be used, not to raise the score; a sieve tuned against the reference points is no longer an independent check.</p>
+<p>Objects in the worked example average about <span data-d="segmentation.mean_area_m2" data-fmt="f1"></span> m² (<span data-d="segmentation.mean_area_px" data-fmt="int"></span> pixels), so a 4,000 px (10 m²) sieve leaves most of the map alone. It does erase the thin grass strips the greenness refinement brings out, which is why the example is assessed with no sieve.<!-- TODO(cafs-figures): check against the CAFS figures once build_figures_cafs.py has run --> Set the sieve for how the map will be used, not to raise the score; a sieve tuned against the reference points is no longer an independent check.</p>
 
 <h2 id="accuracy"><span class="num">5.11</span>Accuracy assessment</h2>
 <p>A map is only as useful as your knowledge of how wrong it is. Lite Classify follows standard practice for thematic maps (Congalton and Green; Olofsson et al. 2014):</p>
@@ -424,7 +424,7 @@
     <tr><td><strong>Stratified by map class</strong></td><td>A minimum number of points in each map class (the strata), the rest by area share</td><td>Usable per-class figures for small classes</td><td>Counts over-weight small classes; use the area-weighted estimates</td></tr>
   </tbody>
 </table></div>
-<p>Under a stratified design, small classes are sampled at much higher rates than large ones, so a share of points is not a share of the map. Lite Classify therefore also <strong>weights each stratum by its mapped area</strong> and reports area-weighted overall, user's and producer's accuracy, the estimated area of each class, and 95% confidence intervals (Olofsson et al. 2014). The strata are the map classes <em>at the time the points were drawn</em>; if you later merge or rename classes, the estimates still use the original strata (Stehman 2014). That is what happened in the worked example: points were drawn on a nine-class map (broadleaf trees, coconut, banana, brush and the rest) and assessed after merging to seven.</p>
+<p>Under a stratified design, small classes are sampled at much higher rates than large ones, so a share of points is not a share of the map. Lite Classify therefore also <strong>weights each stratum by its mapped area</strong> and reports area-weighted overall, user's and producer's accuracy, the estimated area of each class, and 95% confidence intervals (Olofsson et al. 2014). The strata are the map classes <em>at the time the points were drawn</em>; if you later merge or rename classes, the estimates still use the original strata (Stehman 2014). </p><!-- TODO(accuracy): the CAFS strata story, once Leonardo has checked the new 50-per-class sample -->
 <p>The worked example's points give <span data-d="final.oa" data-fmt="pct"></span> from raw counts and <span data-d="final.oa_aw" data-fmt="pct"></span> ± <span data-d="final.oa_aw_ci" data-mul="100" data-fmt="f1"></span> area-weighted. The gap is the extra weight the design put on the small, difficult classes. The full matrix is in <a href="workflow.html#acc-read">Part C, 11.5</a>.</p>
 <div class="warn"><p><strong>Reference data is not ground truth.</strong> Points you label by eye from the orthomosaic are high-confidence <em>reference data</em>. Only points checked on the ground are <em>ground truth</em>. Where interpretation is hard, as for planted versus natural crowns, the interpreter's errors resemble the model's. Lite Classify's report records the source of every point and says so in its footnote.</p></div>
 
