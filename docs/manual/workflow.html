@@ -143,7 +143,7 @@
     <button class="g-step" type="button" data-step="-1" aria-label="Previous">‹</button>
     <div class="g-thumbs" role="tablist" aria-label="Resolutions">
       <button type="button" data-thumb="img/res_native.jpg" data-src="img/res_native.jpg" data-alt="A 30 by 22 metre area at 2.2 cm" data-cap="<b>2.2 cm (native).</b> Single leaves and soil clods: too fine to segment.">2.2 cm</button>
-      <button type="button" data-thumb="img/res_10cm.jpg" data-src="img/res_10cm.jpg" data-alt="The same area at 5 cm" data-cap="<b>5 cm (used here).</b> Crop rows, beds and grass strips stay separate." data-start>5 cm</button>
+      <button type="button" data-thumb="img/res_5cm.jpg" data-src="img/res_5cm.jpg" data-alt="The same area at 5 cm" data-cap="<b>5 cm (used here).</b> Crop rows, beds and grass strips stay separate." data-start>5 cm</button>
       <button type="button" data-thumb="img/res_20cm.jpg" data-src="img/res_20cm.jpg" data-alt="The same area at 20 cm" data-cap="<b>20 cm.</b> Rows and narrow strips blur into the beds around them.">20 cm</button>
     </div>
     <span class="g-count"></span>
@@ -187,7 +187,7 @@
   <thead><tr><th>Control</th><th>Range</th><th>Default</th><th>Worked example</th><th>Start here</th></tr></thead>
   <tbody>
     <tr><td>Object Size</td><td class="mono">0.5–10,000 m²</td><td class="mono">10 m²</td><td class="mono">~8.6 m²</td><td>The size of one object on the ground. Aim for a few m² to a few tens of m², and small enough that the narrowest thing you map gets objects of its own. Sets Num Segments from the image's valid area.</td></tr>
-    <tr><td>Num Segments</td><td class="mono">100–2,000,000</td><td>from Object Size</td><td class="mono">60,000</td><td>The same choice as a count. Edit either box; the other follows. Whichever you set last is kept when you resample.</td></tr>
+    <tr><td>Num Segments</td><td class="mono">100–2,000,000</td><td>from Object Size</td><td class="mono">67,536</td><td>The same choice as a count. Edit either box; the other follows. Whichever you set last is kept when you resample.</td></tr>
     <tr><td>Compactness</td><td class="mono">0.01–1.00</td><td class="mono">0.15</td><td class="mono">0.15</td><td>Keep 0.15. Lower only if segments cut across clear edges.</td></tr>
     <tr><td>Sigma (Smoothing)</td><td class="mono">0–10</td><td class="mono">2.5</td><td class="mono">2.5</td><td>Keep 2.5. Raise if segments look ragged or grid-like.</td></tr>
     <tr><td>Colour/texture at</td><td class="mono">native–working</td><td>working grid</td><td class="mono">3.30 cm/px</td><td>Set to the native resolution when the image allows: texture then comes from full detail (<a href="concepts.html#feature-res">Part B, 5.3</a>). Shown for images in projected coordinates.</td></tr>
@@ -234,7 +234,7 @@
 <h3 id="name">8.3 Name groups</h3>
 <ol class="steps">
   <li>With a group selected, pick a class in <span class="ui">Name this group</span>, or type a new name and click <span class="ui">Add Class</span>. A new class is created at once, with a suggested colour from its name (trees dark green, grass yellow-green, water blue, buildings red, …), and appears in Tab 3 too: the two tabs share one class list.</li>
-  <li>Several groups can share a name. The example named <span data-d="discover.named"></span> of its <span data-d="discover.groups"></span> groups. Ctrl-select several cards to name them together.</li><!-- TODO: say which groups became which classes, from the CAFS groups -->
+  <li>Several groups can share a name. The example named <span data-d="discover.named"></span> of its <span data-d="discover.groups"></span> groups. Bare took five groups, Grass three, and Road, Tree, Water, Mud and Building two each; Crop 1 and Crop 2 took one each. Ctrl-select several cards to name them together.</li>
   <li>Right-click a class in the dropdown to rename it, change its colour or remove it.</li>
 </ol>
 <p>Leave a group unnamed when you are unsure; unnamed groups simply do not become training samples.</p>
@@ -250,7 +250,7 @@
     <tr><td>Move tiles</td><td>A few tiles are in the wrong group</td><td>Select tiles (click, Ctrl/Shift-click), right-click, move to a group, a new group, or out of all groups. Right-clicking a segment on the map does the same.</td></tr>
   </tbody>
 </table></div>
-<!-- TODO: a CAFS example of a split or merge, from its groups -->
+<p>The example split rather than merged. One of its groups mixed the pond's open water with the dark patches in it, so it was split and the pieces were named Water and Mud; splits like this took it from <span data-d="discover.requested"></span> groups to <span data-d="discover.groups"></span>.</p>
 
 <h3 id="send">8.5 Send named groups to Classification</h3>
 <ol class="steps">
@@ -326,7 +326,7 @@
 
 <h3 id="train">10.2 Train and classify</h3>
 <ol class="steps">
-  <li>Tick <span class="ui">Use deep appearance features</span> to give the classifier the 20 DINOv2 components as well (needs Find Groups with Appearance run once). The example used it: 44 features.</li>
+  <li>Tick <span class="ui">Use deep appearance features</span> to give the classifier the 20 appearance components as well (needs Find Groups with Appearance run once). The example used it, with the DINOv3 backbone: 44 features.</li>
   <li>Click <span class="ui">Train Classifier</span>. You need samples in at least two classes. The console lists every feature used and the number of samples.</li>
   <li>Click <span class="ui">Classify All Segments</span>. Every object gets a class within seconds, the sieve is applied, and the view switches to the classified map.</li>
 </ol>
@@ -342,11 +342,11 @@
   </div>
   <p class="cg-cap"></p>
   <div class="g-thumbs" role="tablist" aria-label="Locations">
-    <button type="button" data-thumb="img/view_raw.jpg" data-before="img/view_raw.jpg" data-after="img/view_classified.png" data-alt-before="Row field beside the road, true colour" data-alt-after="Row field beside the road, classified" data-cap="<b>Row field by Pili Drive.</b> Crop rows, the bare beds between them and the grass strips along the edges; the road and its tree line run across the top.">Row field</button>
-    <button type="button" data-thumb="img/view_raw_ditch.jpg" data-before="img/view_raw_ditch.jpg" data-after="img/view_classified_ditch.png" data-alt-before="Ditch beside a ploughed field, true colour" data-alt-after="Ditch beside a ploughed field, classified" data-cap="<b>Ditch-side strips.</b> Narrow grass lines along a ditch and a ploughed field, recovered by the greenness refinement.">Ditch</button>
+    <button type="button" data-thumb="img/view_raw.jpg" data-before="img/view_raw.jpg" data-after="img/view_classified.png" data-alt-before="Fields beside the road, true colour" data-alt-after="Fields beside the road, classified" data-cap="<b>Fields by Pili Drive.</b> Pili Drive and its tree line run diagonally between crop plots and a ploughed field; greenhouses stand at the right. Green rows in the plots come from the greenness refinement.">Fields</button>
+    <button type="button" data-thumb="img/view_raw_ditch.jpg" data-before="img/view_raw_ditch.jpg" data-after="img/view_classified_ditch.png" data-alt-before="Ditch beside a ploughed field, true colour" data-alt-after="Ditch beside a ploughed field, classified" data-cap="<b>Ditch-side strips.</b> Narrow green rows in a ploughed field and the strips along its edge, recovered by the greenness refinement.">Ditch</button>
     <button type="button" data-thumb="img/view_raw_dying.jpg" data-before="img/view_raw_dying.jpg" data-after="img/view_classified_dying.png" data-alt-before="Dying grass in the south-west, true colour" data-alt-after="Dying grass in the south-west, classified" data-cap="<b>Dying grass, south-west.</b> Tan grass that is nearly the colour of soil keeps a faint green tinge; kept whole as grass by the refinement's default mode.">Dying grass</button>
-    <button type="button" data-thumb="img/view_raw_buildings.jpg" data-before="img/view_raw_buildings.jpg" data-after="img/view_classified_buildings.png" data-alt-before="Buildings and plots, true colour" data-alt-after="Buildings and plots, classified" data-cap="<b>Buildings and small plots.</b> Roofs, the road and paths beside small experimental plots of crops and grass.">Buildings</button>
-    <button type="button" data-thumb="img/view_raw_pond.jpg" data-before="img/view_raw_pond.jpg" data-after="img/view_classified_pond.png" data-alt-before="The pond and its banks, true colour" data-alt-after="The pond and its banks, classified" data-cap="<b>The pond.</b> Open water, the mud along its banks, and the grass and bare ground around it.">Pond</button>
+    <button type="button" data-thumb="img/view_raw_buildings.jpg" data-before="img/view_raw_buildings.jpg" data-after="img/view_classified_buildings.png" data-alt-before="The main building and yard, true colour" data-alt-after="The main building and yard, classified" data-cap="<b>The main building.</b> Its roofs against the bare and grassy yard.">Buildings</button>
+    <button type="button" data-thumb="img/view_raw_pond.jpg" data-before="img/view_raw_pond.jpg" data-after="img/view_classified_pond.png" data-alt-before="The pond and its banks, true colour" data-alt-after="The pond and its banks, classified" data-cap="<b>The pond.</b> Open water, the dark patches mapped as Mud, and the grass and bare ground along the bank.">Pond</button>
   </div>
 </div>
 
@@ -417,7 +417,7 @@
   <li>For stratified, set <span class="ui">Min per Class</span> (default 50). Each class gets the larger of that minimum and its area share of <span class="ui">Points to Add</span>. The strata are the classes of the current map, so classify first.</li>
   <li>Click <span class="ui">Generate</span>. Points never fall on training objects. A stratified sample records each point's stratum and a seed, so it can be reproduced; there can be one stratified sample per map.</li>
 </ol>
-<p class="small">The example drew a stratified sample with a minimum of 50 per class on its nine-class map at the time: <span data-d="final.n"></span> points, seed <span data-d="strata.seed"></span>.</p>
+<p class="small">The example drew a stratified sample of 50 per class on its nine-class map at the time, with no sieve: <span data-d="final.n"></span> points, seed <span data-d="strata.seed"></span>. 229 of the 450 randomly drawn points were moved a median of 1.7 m by the interpreter, without reference to the classified map, to a spot with a clearer view of the land cover. The samples were then refined, and the estimates keep the original strata as their weights.</p>
 
 <h3 id="acc-label">11.3 Label the points</h3>
 <ol class="steps">
@@ -441,22 +441,22 @@
   <p>The matrix below is the example's <code>accuracy_report.csv</code>: <span data-d="final.n"></span> stratified points labelled by photo-interpretation of the orthomosaic with the classification hidden. Cells are point counts. The user's and producer's accuracies in the margins, and the overall accuracy, are the area-weighted estimates with their 95% confidence intervals. Photo-interpreted points are reference data, not field-checked ground truth.</p>
 </div>
 <div class="table-wrap" id="confusion-matrix"></div>
-<!-- TODO(accuracy): write the reading of the CAFS matrix (largest confusions, weak classes) once Leonardo has checked the new 50-per-class sample -->
+<p>The largest confusions are Mud on the map that is open water (8 points), reference Mud and Grass mapped as Bare (3 and 2), Bare mapped as Grass (4), and four shaded tree crowns mapped as Building. Building and Mud are the weakest classes, at a user's accuracy of about 77%.</p>
 <ul>
-  <li><strong>Overall accuracy is <span data-d="final.oa_aw" data-fmt="pct"></span> ± <span data-d="final.oa_aw_ci" data-mul="100" data-fmt="f1"></span></strong> (area-weighted), against <span data-d="final.oa" data-fmt="pct"></span> from raw counts.</li>
+  <li><strong>Overall accuracy is <span data-d="final.oa_aw" data-fmt="pct"></span> ± <span data-d="final.oa_aw_ci" data-mul="100" data-fmt="f1"></span></strong> (area-weighted), against <span data-d="final.oa" data-fmt="pct"></span> from raw counts. The samples were refined over several rounds while these points were in use, so the figure may be somewhat optimistic.</li>
 </ul>
 <div class="table-wrap"><table>
   <thead><tr><th>Class</th><th class="num">Mapped (ha)</th><th class="num">Estimated (ha)</th><th class="num">95% CI (ha)</th><th>Reading</th></tr></thead>
   <tbody>
-    <tr><td><span class="sw" style="background:var(--c-bare)"></span>Bare</td><td class="num"><span data-d="final.est.Bare.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Bare.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Bare.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-crop1)"></span>Crop 1</td><td class="num"><span data-d="final.est.Crop 1.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Crop 1.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Crop 1.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-crop2)"></span>Crop 2</td><td class="num"><span data-d="final.est.Crop 2.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Crop 2.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Crop 2.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-grass)"></span>Grass</td><td class="num"><span data-d="final.est.Grass.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Grass.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Grass.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-water)"></span>Water</td><td class="num"><span data-d="final.est.Water.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Water.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Water.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-tree)"></span>Tree</td><td class="num"><span data-d="final.est.Tree.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Tree.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Tree.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-road)"></span>Road</td><td class="num"><span data-d="final.est.Road.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Road.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Road.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-building)"></span>Building</td><td class="num"><span data-d="final.est.Building.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Building.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Building.ci_ha" data-fmt="f2"></span></td><td></td></tr>
-    <tr><td><span class="sw" style="background:var(--c-mud)"></span>Mud</td><td class="num"><span data-d="final.est.Mud.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Mud.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Mud.ci_ha" data-fmt="f2"></span></td><td></td></tr>
+    <tr><td><span class="sw" style="background:var(--c-bare)"></span>Bare</td><td class="num"><span data-d="final.est.Bare.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Bare.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Bare.ci_ha" data-fmt="f2"></span></td><td>Mapped area is above the estimate, within the interval: a few Mud, Grass and Road points are mapped as Bare.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-crop1)"></span>Crop 1</td><td class="num"><span data-d="final.est.Crop 1.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Crop 1.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Crop 1.ci_ha" data-fmt="f2"></span></td><td>The most reliable crop figure: no reference Crop 1 point was mapped as anything else.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-crop2)"></span>Crop 2</td><td class="num"><span data-d="final.est.Crop 2.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Crop 2.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Crop 2.ci_ha" data-fmt="f2"></span></td><td>Mapped area sits close to the estimate; its plants are sparse, so bare ground between them can be mapped as Crop 2.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-grass)"></span>Grass</td><td class="num"><span data-d="final.est.Grass.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Grass.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Grass.ci_ha" data-fmt="f2"></span></td><td>The map may slightly understate it; the estimate's interval includes the mapped area.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-water)"></span>Water</td><td class="num"><span data-d="final.est.Water.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Water.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Water.ci_ha" data-fmt="f2"></span></td><td>Slightly understated: 8 points mapped as Mud are open water, so the interval excludes the mapped area.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-tree)"></span>Tree</td><td class="num"><span data-d="final.est.Tree.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Tree.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Tree.ci_ha" data-fmt="f2"></span></td><td>Every point mapped as Tree is tree, but 4 shaded crowns were mapped as Building.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-road)"></span>Road</td><td class="num"><span data-d="final.est.Road.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Road.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Road.ci_ha" data-fmt="f2"></span></td><td>Every point mapped as Road is road. The interval is wide because a few road points fall in the large Bare class.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-building)"></span>Building</td><td class="num"><span data-d="final.est.Building.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Building.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Building.ci_ha" data-fmt="f2"></span></td><td>The weakest figure: a single building point mapped as Bare carries a lot of weight, so the interval is very wide.</td></tr>
+    <tr><td><span class="sw" style="background:var(--c-mud)"></span>Mud</td><td class="num"><span data-d="final.est.Mud.mapped_ha" data-fmt="f2"></span></td><td class="num"><span data-d="final.est.Mud.est_ha" data-fmt="f2"></span></td><td class="num">±<span data-d="final.est.Mud.ci_ha" data-fmt="f2"></span></td><td>Overstated: the map's Mud includes open water between the patches, so use the estimate.</td></tr>
   </tbody>
 </table></div>
 <p class="small">The estimated areas correct the mapped areas for the errors the sample found. For anything reported in hectares, quote the estimate and its interval, not the mapped area.</p>
@@ -472,7 +472,7 @@
     <button class="g-step" type="button" data-step="1" aria-label="Next">›</button>
   </div>
 </div>
-<p><strong>Next retraining target:</strong> the row with the most off-diagonal points.</p><!-- TODO(accuracy): name the CAFS retraining target -->
+<p><strong>Next retraining target:</strong> the row with the most off-diagonal points. In the example that is Mud, where 8 of 34 points are open water, closely followed by Bare, whose 8 misses are spread across several classes.</p>
 
 <h3 id="iterations">11.6 Iterations: keep and roll back rounds</h3>
 <p>Every <span class="ui">Run Accuracy Assessment</span> adds a row to the <span class="ui">Iterations</span> list: its number, overall accuracy, and how many samples and points it used. Each row keeps everything that run was based on: the training samples, class names, Discover group names, accuracy points and the classified map.</p>
