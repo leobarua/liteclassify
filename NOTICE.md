@@ -55,7 +55,7 @@ inside a closed-source product). See `COMMERCIAL-LICENSING.md`.
 **DINOv3 is not part of Lite Classify.** Its weights and Meta's DINOv3 code are under Meta's
 DINOv3 License, which is not an open-source licence, and are never included in this
 repository, the installers or the releases (`build_exe.py` refuses to build if a DINOv3 file
-is present). The experimental DINOv3 backbone in Discover Classes reads a weights file that
+is present). The optional DINOv3 backbone reads a weights file that
 each user downloads from Meta and uses under Meta's terms; Lite Classify neither downloads nor
 copies it. The DINOv3 model code used is timm's own implementation (Apache 2.0).
 

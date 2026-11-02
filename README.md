@@ -26,12 +26,13 @@ You work through four tabs, left to right:
    features: color, vegetation indices, GLCM texture, shape, elevation, slope, height above
    ground, and contrast with its neighbors.
 2. **Discover Classes:** each object's surroundings are described by a frozen DINOv2 ViT-S/14
-   at 5 m and 10 m. The objects are over-clustered with k-means, and you review, merge, split
+   (or, optionally, a DINOv3 ViT-S+/16 weights file you obtain from Meta) at 5 m and 10 m. The objects are over-clustered with k-means, and you review, merge, split
    and name the groups to build the class list and the first training samples.
 3. **Classification:** label more samples by clicking, dragging or growing a selection, with
    help from "Find Similar Segments" and "What to Label Next". Check class separability
    (Jeffries–Matusita), train a Random Forest, retrain until the map stops improving, and export
-   a GeoTIFF with a QGIS style.
+   a GeoTIFF with a QGIS style. An optional pixel-level greenness refinement recovers grass
+   strips narrower than the objects. A large image can be processed one extent at a time.
 4. **Accuracy Assessment:** draw a stratified or simple random sample, label the points by eye
    or import field data, and get the error matrix plus area-weighted accuracy and area estimates
    with confidence intervals (Olofsson et al., 2014; Stehman, 2014).
@@ -80,7 +81,7 @@ To contribute, see [`CONTRIBUTING.md`](CONTRIBUTING.md); contributions require a
 
 If you publish work made with Lite Classify, please cite the version you used:
 
-> Barua, L. D. (2026). *Lite Classify* (Version 1.1) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23612117
+> Barua, L. D. (2026). *Lite Classify* (Version 1.2) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23462352
 
 To cite all versions, use the concept DOI
 [10.5281/zenodo.23462352](https://doi.org/10.5281/zenodo.23462352). Other formats (BibTeX, APA)
