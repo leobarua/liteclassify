@@ -3479,6 +3479,78 @@ class ObiaApp(QMainWindow):
         view_layout.addWidget(self.opacity_container)
         view_group.setLayout(view_layout)
 
+        # --- Greenness refinement: pixel-level bare/grass (or any two classes) pass ---
+        refine_group = QGroupBox("Greenness Refinement (pixel level)")
+        refine_layout = QVBoxLayout()
+        self.refine_check = QCheckBox("Refine two classes by greenness (ExG)")
+        self.refine_check.setToolTip(
+            "After classification, pixels mapped as either of the two classes below are "
+            "re-decided by their greenness (ExG, averaged over the window). Brings out rows and "
+            "strips narrower than a segment. Other classes are not changed.")
+        refine_layout.addWidget(self.refine_check)
+        mode_row = QHBoxLayout()
+        self.refine_mode_combo = QComboBox()
+        self.refine_mode_combo.addItem("Keep green segments whole", "hybrid")
+        self.refine_mode_combo.addItem("Every pixel, both ways", "pixel")
+        self.refine_mode_combo.setToolTip(
+            "Keep green segments whole: green pixels in the other class become the green class, "
+            "but a green-class segment only turns to the other class as a whole, when under a "
+            "quarter of its pixels are green -- patchy or dying grass stays solid.\n"
+            "Every pixel, both ways: each pixel above the cutoff is the green class and each at "
+            "or below it the other class -- sharpest edges, but patchy grass gets holes.")
+        mode_row.addWidget(QLabel("Mode:"))
+        mode_row.addWidget(self.refine_mode_combo, 1)
+        refine_layout.addLayout(mode_row)
+        pair_row = QHBoxLayout()
+        self.refine_green_combo = QComboBox()
+        self.refine_other_combo = QComboBox()
+        self.refine_green_combo.setToolTip("The greener class, e.g. grass")
+        self.refine_other_combo.setToolTip("The less green class, e.g. bare soil")
+        pair_row.addWidget(QLabel("Green:"))
+        pair_row.addWidget(self.refine_green_combo, 1)
+        pair_row.addWidget(QLabel("Other:"))
+        pair_row.addWidget(self.refine_other_combo, 1)
+        refine_layout.addLayout(pair_row)
+        cut_row = QHBoxLayout()
+        self.refine_cutoff_spin = QDoubleSpinBox()
+        self.refine_cutoff_spin.setDecimals(3)
+        self.refine_cutoff_spin.setRange(-1.0, 1.0)
+        self.refine_cutoff_spin.setSingleStep(0.005)
+        self.refine_cutoff_spin.setValue(0.040)
+        self.refine_cutoff_spin.setToolTip("ExG above this is the green class. Lower it to keep "
+                                           "faint or dying grass green; raise it to make rows thinner.")
+        self.refine_from_samples_btn = QPushButton("From Samples")
+        self.refine_from_samples_btn.setToolTip("Set the cutoff that best separates the training "
+                                                "samples of the two classes")
+        self.refine_window_combo = QComboBox()
+        for n in (1, 3, 5, 7, 9):
+            self.refine_window_combo.addItem(f"{n}×{n} px", n)
+        self.refine_window_combo.setCurrentIndex(1)
+        self.refine_window_combo.setToolTip("Greenness is averaged over this square around each pixel. "
+                                            "Smaller follows thin rows more tightly but is noisier.")
+        cut_row.addWidget(QLabel("Cutoff:"))
+        cut_row.addWidget(self.refine_cutoff_spin)
+        cut_row.addWidget(self.refine_from_samples_btn)
+        cut_row.addWidget(QLabel("Window:"))
+        cut_row.addWidget(self.refine_window_combo)
+        refine_layout.addLayout(cut_row)
+        self.refine_status_label = QLabel("")
+        self.refine_status_label.setWordWrap(True)
+        self.refine_status_label.setStyleSheet("color: gray;")
+        refine_layout.addWidget(self.refine_status_label)
+        refine_group.setLayout(refine_layout)
+        self.refine_check.toggled.connect(self._refine_controls_changed)
+        self.refine_green_combo.activated.connect(self._refine_controls_changed)
+        self.refine_other_combo.activated.connect(self._refine_controls_changed)
+        self.refine_window_combo.activated.connect(self._refine_controls_changed)
+        self.refine_mode_combo.activated.connect(self._refine_controls_changed)
+        self._refine_cutoff_set = False   # becomes True once From Samples ran or the user typed one
+        self.refine_cutoff_spin.editingFinished.connect(lambda: setattr(self, "_refine_cutoff_set", True))
+        self.refine_cutoff_spin.editingFinished.connect(self._refine_controls_changed)
+        self.refine_from_samples_btn.clicked.connect(self.refine_cutoff_from_samples)
+        self._refine_cache = None
+        self._refine_sync_enabled()
+
         gen_group = QGroupBox("Post-Classification Generalization")
         gen_layout = QHBoxLayout()
         self.gen_slider = QSlider(Qt.Horizontal)
@@ -3529,6 +3601,9 @@ class ObiaApp(QMainWindow):
         class_layout.addLayout(add_class_layout)
 
         self.class_list_widget = QListWidget()
+        _m = self.class_list_widget.model()
+        for _sig in (_m.rowsInserted, _m.rowsRemoved, _m.modelReset):
+            _sig.connect(lambda *_: self._refresh_refine_combos())
         self.class_list_widget.setSelectionMode(QListWidget.ExtendedSelection)
         self.class_list_widget.setItemDelegate(ClassListDelegate(self.class_list_widget))
         self.class_list_widget.itemSelectionChanged.connect(self.on_class_selection_changed)
@@ -3651,6 +3726,7 @@ class ObiaApp(QMainWindow):
         col2_layout.addWidget(view_group)
         col2_layout.addWidget(selection_group)
         col2_layout.addWidget(train_group)
+        col2_layout.addWidget(refine_group)
         col2_layout.addWidget(gen_group)
         col2_layout.addWidget(self.export_btn)
         col2_layout.addStretch()
@@ -4789,6 +4865,7 @@ class ObiaApp(QMainWindow):
                        if self.engine.accuracy_strata else None),
             "lut": self._class_map_lut(),
             "sieve": int(self.gen_spinbox.value()),
+            "refine": self._refine_settings(),
             "use_deep": bool(self.use_deep_check.isChecked()),
             "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
             "seg_shape": list(self.engine.segmented_image.shape),
@@ -4965,6 +5042,7 @@ class ObiaApp(QMainWindow):
         # classifier settings, then the model (same samples -> same forest) and the map
         self.use_deep_check.setChecked(it["use_deep"])
         self.gen_spinbox.setValue(it["sieve"])
+        self._set_refine_settings(it.get("refine"))
         self.classifier = None
         self.classifier_features = None
         if sum(1 for d in self.classes.values() if d["training_segments"]) >= 2:
@@ -5193,6 +5271,11 @@ class ObiaApp(QMainWindow):
         for i, n in enumerate(old_order, start=1):
             target = name_map.get(n, n)
             lut[i] = new_index.get(target, 0) if target else 0
+        refine = self._refine_settings()
+        for k in ("green", "other"):
+            if refine[k] in name_map:
+                refine[k] = name_map[refine[k]]
+        self._set_refine_settings(refine)
         self.raw_classified_raster_ints = lut[self.raw_classified_raster_ints]
         if self.sieved_classified_raster_ints is not None:
             self.sieved_classified_raster_ints = lut[self.sieved_classified_raster_ints]
@@ -5609,6 +5692,7 @@ class ObiaApp(QMainWindow):
             if name in self.classes:
                 count = len(self.classes[name]["training_segments"])
                 item.setText(f"{name} ({count})")
+        self._refresh_refine_combos()
 
     def update_classification_display(self):
         """ The Classification map as layers over the shared ortho pixmap: the view layer
@@ -6028,14 +6112,170 @@ class ObiaApp(QMainWindow):
         self.sieved_classified_raster_ints = self.raw_classified_raster_ints.copy()
         self.apply_generalization_sieve()
 
+    # --- Greenness refinement (pixel level, between the object map and the sieve) ---
+    _REFINE_GREEN_HINTS = ("grass", "veg", "green", "weed", "lawn", "pasture")
+    _REFINE_OTHER_HINTS = ("bare", "soil", "dirt", "ground", "fallow", "earth")
+
+    def _refine_sync_enabled(self):
+        on = self.refine_check.isChecked()
+        for w in (self.refine_green_combo, self.refine_other_combo, self.refine_cutoff_spin,
+                  self.refine_from_samples_btn, self.refine_window_combo, self.refine_mode_combo):
+            w.setEnabled(on)
+
+    def _refresh_refine_combos(self):
+        """ Keep the two class pickers in step with the class list (and guess grass/bare
+        the first time), and show the window size on the ground. """
+        names = list(self.classes)
+        for combo, hints in ((self.refine_green_combo, self._REFINE_GREEN_HINTS),
+                             (self.refine_other_combo, self._REFINE_OTHER_HINTS)):
+            cur = combo.currentText()
+            if [combo.itemText(i) for i in range(combo.count())] != names:
+                combo.blockSignals(True)
+                combo.clear()
+                combo.addItems(names)
+                combo.blockSignals(False)
+            if cur in names:
+                combo.setCurrentText(cur)
+            else:
+                guess = next((n for n in names if any(h in n.lower() for h in hints)), None)
+                combo.setCurrentIndex(names.index(guess) if guess else -1)
+        ps = self.engine.effective_pixel_size
+        geo = bool(getattr(self.engine, "native_crs_is_geographic", False))
+        for i in range(self.refine_window_combo.count()):
+            n = self.refine_window_combo.itemData(i)
+            txt = f"{n}×{n} px"
+            if ps and not geo:
+                txt += f" (≈{n * ps * 100:.0f} cm)"
+            self.refine_window_combo.setItemText(i, txt)
+
+    def _refine_settings(self):
+        return {"enabled": bool(self.refine_check.isChecked()),
+                "green": self.refine_green_combo.currentText() or None,
+                "other": self.refine_other_combo.currentText() or None,
+                "cutoff": round(float(self.refine_cutoff_spin.value()), 4),
+                "window": int(self.refine_window_combo.currentData() or 3),
+                "mode": self.refine_mode_combo.currentData() or "hybrid"}
+
+    def _set_refine_settings(self, st):
+        """ Restore saved settings (without re-running anything; the caller does that). """
+        st = st or {}
+        self._refresh_refine_combos()
+        widgets = (self.refine_check, self.refine_green_combo, self.refine_other_combo,
+                   self.refine_cutoff_spin, self.refine_window_combo, self.refine_mode_combo)
+        for w in widgets:
+            w.blockSignals(True)
+        try:
+            self.refine_check.setChecked(bool(st.get("enabled", False)))
+            for combo, key in ((self.refine_green_combo, "green"), (self.refine_other_combo, "other")):
+                if st.get(key) in self.classes:
+                    combo.setCurrentText(st[key])
+            if st.get("cutoff") is not None:
+                self.refine_cutoff_spin.setValue(float(st["cutoff"]))
+                self._refine_cutoff_set = True
+            i = self.refine_mode_combo.findData(st.get("mode", "hybrid"))
+            if i >= 0:
+                self.refine_mode_combo.setCurrentIndex(i)
+            i = self.refine_window_combo.findData(int(st.get("window", 3)))
+            if i >= 0:
+                self.refine_window_combo.setCurrentIndex(i)
+        finally:
+            for w in widgets:
+                w.blockSignals(False)
+        self._refine_cache = None
+        self._refine_sync_enabled()
+        if not self.refine_check.isChecked():
+            self.refine_status_label.setText("")
+
+    def _refine_controls_changed(self, *_):
+        self._refine_sync_enabled()
+        if self.refine_check.isChecked() and not self._refine_cutoff_set and self._refine_pair()[0]:
+            self.refine_cutoff_from_samples(quiet=True)
+            return
+        if self.raw_classified_raster_ints is not None:
+            self.apply_generalization_sieve()
+        elif not self.refine_check.isChecked():
+            self.refine_status_label.setText("")
+
+    def _refine_pair(self):
+        """ (green index, other index) in the classified map, or None with a reason. """
+        st = self._refine_settings()
+        g, o = st["green"], st["other"]
+        if not g or not o or g not in self.classes or o not in self.classes:
+            return None, "pick the green and the other class"
+        if g == o:
+            return None, "the two classes must differ"
+        order = list(self.classes)
+        return (order.index(g) + 1, order.index(o) + 1), None
+
+    def _refined_class_map(self):
+        """ The object map with the greenness refinement applied (cached), or the object
+        map itself when the refinement is off or can't run. """
+        raw = self.raw_classified_raster_ints
+        if raw is None or not self.refine_check.isChecked():
+            return raw
+        pair, why = self._refine_pair()
+        if pair is None or self.engine.original_ortho_data is None \
+                or self.engine.original_ortho_data.shape[0] < 3 \
+                or self.engine.original_ortho_data.shape[1:] != raw.shape:
+            why = why or "needs the RGB image the map was made from"
+            self.refine_status_label.setText(f"Not applied: {why}.")
+            print(f"Greenness refinement not applied: {why}.")
+            return raw
+        st = self._refine_settings()
+        key = (pair, st["cutoff"], st["window"], st["mode"])
+        c = self._refine_cache
+        if c is not None and c[0] is raw and c[1] == key:
+            return c[2]
+        print(f"Refining '{st['green']}' / '{st['other']}' by greenness "
+              f"(ExG cutoff {st['cutoff']:.3f}, {st['window']}×{st['window']} px window, "
+              f"{self.refine_mode_combo.currentText().lower()})...")
+        QApplication.processEvents()
+        refined, info = self.engine.refine_by_greenness(raw, pair[0], pair[1], st["cutoff"], st["window"],
+                                                        mode=st["mode"])
+        tot = max(1, info["total"])
+        g_before = int((raw == pair[0]).sum())
+        g_after = g_before + info["to_green"] - info["to_other"]
+        msg = (f"{100 * info['to_green'] / tot:.1f}% of the map moved {st['other']} → {st['green']}, "
+               f"{100 * info['to_other'] / tot:.1f}% {st['green']} → {st['other']}. "
+               f"{st['green']}: {100 * g_before / tot:.1f}% → {100 * g_after / tot:.1f}% of the map.")
+        self.refine_status_label.setText(msg)
+        print("Greenness refinement: " + msg)
+        self._refine_cache = (raw, key, refined)
+        return refined
+
+    def refine_cutoff_from_samples(self, quiet=False):
+        pair, why = self._refine_pair()
+        st = self._refine_settings()
+        if pair is None:
+            cutoff, info = None, why
+        else:
+            cutoff, info = self.engine.suggest_greenness_cutoff(
+                self.classes[st["green"]]["training_segments"], self.classes[st["other"]]["training_segments"])
+        if cutoff is None:
+            if quiet:
+                print(f"Greenness cutoff not set from samples ({info}); using {st['cutoff']:.3f}.")
+                self._refine_cutoff_set = True
+                self._refine_controls_changed()
+            else:
+                QMessageBox.information(self, "Greenness Refinement", f"Can't suggest a cutoff: {info}.")
+            return
+        self.refine_cutoff_spin.setValue(round(cutoff, 3))
+        self._refine_cutoff_set = True
+        print(f"Greenness cutoff from samples: ExG {cutoff:.3f} -- {100 * info['green_kept']:.0f}% of the "
+              f"{info['n_green']} '{st['green']}' samples read above it and {100 * info['other_kept']:.0f}% of the "
+              f"{info['n_other']} '{st['other']}' samples at or below it (median ExG "
+              f"{info['median_green']:.3f} vs {info['median_other']:.3f}).")
+        self._refine_controls_changed()
+
     def apply_generalization_sieve(self):
         if self.raw_classified_raster_ints is None: return
         threshold = self.gen_spinbox.value()
-        
+
+        base = self._refined_class_map()
         print(f"Applying Spatial Generalization Sieve (MMU: {threshold} px)...")
         QApplication.processEvents()
         
-        self.sieved_classified_raster_ints = self.engine.apply_sieve_filter(self.raw_classified_raster_ints, threshold)
+        self.sieved_classified_raster_ints = self.engine.apply_sieve_filter(base, threshold)
         
         self._recolor_classified()
 
@@ -6133,6 +6373,7 @@ class ObiaApp(QMainWindow):
                 "accuracy_strata": self.engine.accuracy_strata,
                 "use_deep_in_classifier": self.use_deep_check.isChecked(),
                 "deep_backbone": None if self.deep is None else self.deep.get("backbone", od.DEFAULT_BACKBONE),
+                "greenness_refinement": self._refine_settings(),
                 "classes": {}
             }
             for class_name, data in self.classes.items():
@@ -6325,6 +6566,7 @@ class ObiaApp(QMainWindow):
             self.refresh_load_view_overlay()
             self._discover_load_from_workspace()
 
+            self._set_refine_settings(session_data.get("greenness_refinement"))
             map_npy = os.path.join(self.workspace_dir, "classified_map.npy")
             if os.path.exists(map_npy):
                 self.raw_classified_raster_ints = np.load(map_npy)
@@ -6453,6 +6695,8 @@ class ObiaApp(QMainWindow):
         self.workspace_dir = None
         self.classes = {}
         self.classifier = None
+        self._set_refine_settings(None)
+        self._refine_cutoff_set = False
 
         self.base_raw_qimg = None
         self.raw_pixmap = None

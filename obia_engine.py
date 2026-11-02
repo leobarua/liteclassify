@@ -1873,6 +1873,100 @@ class ObiaEngine:
             return classified_array
         return sieve(classified_array.astype(np.int32), size_threshold).astype(np.uint8)
 
+    # --- Greenness refinement: a pixel-level pass after classification ---------------
+    # Objects decide that an area is, say, "bare or grass"; pixels then decide which of
+    # the two by their greenness, so rows and strips narrower than a segment can show up
+    # without making the segments smaller. ExG is the same chromatic-coordinate index as
+    # the exg_mean feature (2g - r - b on r, g, b scaled to sum to 1), averaged over a
+    # small square window so single pixels don't flicker.
+    _REFINE_ROWS = 1024
+
+    def _exg_strip(self, r0, r1, window):
+        """ Window-averaged ExG for rows r0:r1 of the working grid (float32). """
+        from scipy.ndimage import uniform_filter
+        rgb = self.original_ortho_data
+        H = rgb.shape[1]
+        pad = window // 2
+        a, b = max(0, r0 - pad), min(H, r1 + pad)
+        x = rgb[:3, a:b, :].astype(np.float32)
+        s = x.sum(axis=0)
+        s[s == 0] = 1.0
+        exg = (2.0 * x[1] - x[0] - x[2]) / s
+        if window > 1:
+            exg = uniform_filter(exg, size=window, mode="nearest")
+        return exg[r0 - a:r0 - a + (r1 - r0)]
+
+    def suggest_greenness_cutoff(self, green_segments, other_segments):
+        """ The ExG cutoff that best separates the training segments of the two classes
+        by their mean ExG (the exg_mean feature): the one with the highest mean of the
+        share of green segments above it and the share of other segments at or below it.
+        Returns (cutoff, info) or (None, reason). """
+        df = self.features_df
+        if df is None or "exg_mean" not in df.columns:
+            return None, "no ExG feature in this workspace"
+        idx = set(df.index)
+        g = df.loc[[s for s in green_segments if s in idx], "exg_mean"].dropna().to_numpy(float)
+        o = df.loc[[s for s in other_segments if s in idx], "exg_mean"].dropna().to_numpy(float)
+        if len(g) == 0 or len(o) == 0:
+            return None, "both classes need training samples"
+        both = np.concatenate([g, o])
+        grid = np.linspace(both.min(), both.max(), 400)
+        kept_g = (g[None, :] > grid[:, None]).mean(axis=1)
+        kept_o = (o[None, :] <= grid[:, None]).mean(axis=1)
+        score = (kept_g + kept_o) / 2.0
+        i = int(np.argmax(score))
+        return float(grid[i]), {"balanced": float(score[i]), "green_kept": float(kept_g[i]),
+                                "other_kept": float(kept_o[i]), "n_green": int(len(g)), "n_other": int(len(o)),
+                                "median_green": float(np.median(g)), "median_other": float(np.median(o))}
+
+    def refine_by_greenness(self, class_map, green_idx, other_idx, cutoff, window,
+                            mode="hybrid", min_green_share=0.25):
+        """ Re-decide the pixels mapped as green_idx or other_idx by window-averaged ExG.
+        Every other class is left as it is.
+          mode "pixel": both ways per pixel -- above cutoff -> green, at or below -> other.
+          mode "hybrid": other -> green per pixel (thin green rows appear), but green ->
+            other only for a whole segment with under min_green_share of its pixels above
+            the cutoff, so patchy (e.g. dying) grass isn't punched full of holes.
+        Returns (new map, {"to_green": n, "to_other": n, "total": n}). """
+        out = class_map.copy()
+        seg = self.segmented_image
+        hybrid = mode == "hybrid" and seg is not None and seg.shape == class_map.shape
+        green_mask = np.zeros(out.shape, dtype=bool)
+        if hybrid:
+            n_seg = int(seg.max()) + 1
+            tot = np.zeros(n_seg, np.int64)
+            grn = np.zeros(n_seg, np.int64)
+        for r in range(0, out.shape[0], self._REFINE_ROWS):
+            r1 = min(out.shape[0], r + self._REFINE_ROWS)
+            block = out[r:r1]
+            pair = (block == green_idx) | (block == other_idx)
+            if not pair.any():
+                continue
+            green = self._exg_strip(r, r1, window) > cutoff
+            green_mask[r:r1] = green
+            if hybrid:
+                in_g = block == green_idx
+                ids = seg[r:r1][in_g]
+                tot += np.bincount(ids, minlength=n_seg)
+                grn += np.bincount(ids[green[in_g]], minlength=n_seg)
+        if hybrid:
+            share = np.where(tot > 0, grn / np.maximum(tot, 1), 1.0)
+            drop = share < min_green_share          # segments that turn wholly to other
+        moved_g = moved_o = 0
+        for r in range(0, out.shape[0], self._REFINE_ROWS):
+            r1 = min(out.shape[0], r + self._REFINE_ROWS)
+            block = out[r:r1]
+            green = green_mask[r:r1]
+            to_g = (block == other_idx) & green
+            if hybrid:
+                to_o = (block == green_idx) & drop[seg[r:r1]]
+            else:
+                to_o = (block == green_idx) & ~green
+            moved_g += int(to_g.sum()); moved_o += int(to_o.sum())
+            block[to_g] = green_idx
+            block[to_o] = other_idx
+        return out, {"to_green": moved_g, "to_other": moved_o, "total": int((class_map > 0).sum())}
+
     def write_qgis_styling(self, qml_path, classes):
         qgis_root = ET.Element("qgis", version="3.28.0", hasScaleBasedVisibilityFlag="0")
         pipe = ET.SubElement(qgis_root, "pipe")
