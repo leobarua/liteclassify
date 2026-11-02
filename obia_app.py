@@ -3538,6 +3538,7 @@ class ObiaApp(QMainWindow):
         self.refine_status_label.setWordWrap(True)
         self.refine_status_label.setStyleSheet("color: gray;")
         refine_layout.addWidget(self.refine_status_label)
+        self.refine_status_label.hide()   # the console carries the figures
         refine_group.setLayout(refine_layout)
         self.refine_check.toggled.connect(self._refine_controls_changed)
         self.refine_green_combo.activated.connect(self._refine_controls_changed)
@@ -3656,11 +3657,17 @@ class ObiaApp(QMainWindow):
         train_btn = QPushButton("Train Classifier")
         train_btn.setMinimumHeight(44)
         train_btn.clicked.connect(self.train_classifier)
-        classify_btn = QPushButton("Classify All Segments")
-        classify_btn.setMinimumHeight(44)
-        classify_btn.clicked.connect(self.classify_all)
+        # Classify sits below Greenness Refinement (see the column layout), so the
+        # refinement is set up before the map is made.
+        self.classify_btn = QPushButton("Classify All Segments")
+        self.classify_btn.setMinimumHeight(44)
+        self.classify_btn.setStyleSheet(
+            "QPushButton { background-color: #e67e22; color: white; font-weight: 600; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #ca6f1e; }"
+            "QPushButton:disabled { background-color: #f0c39b; color: #fbeee2; }"
+        )
+        self.classify_btn.clicked.connect(self.classify_all)
         train_layout.addWidget(train_btn)
-        train_layout.addWidget(classify_btn)
         train_outer.addLayout(train_layout)
         train_group.setLayout(train_outer)
 
@@ -3701,17 +3708,19 @@ class ObiaApp(QMainWindow):
         tol_layout.addWidget(self.grow_tolerance_spinbox)
         selection_layout.addLayout(tol_layout)
 
-        clear_sel_btn = QPushButton("Clear Selection")
+        sel_btn_row = QHBoxLayout()
+        clear_sel_btn = QPushButton("Clear")
+        clear_sel_btn.setToolTip("Clear Selection")
         clear_sel_btn.clicked.connect(self.clear_segment_selection)
-        selection_layout.addWidget(clear_sel_btn)
-
-        assign_sel_btn = QPushButton("Assign Selection to Active Class")
+        assign_sel_btn = QPushButton("Assign to Class")
+        assign_sel_btn.setToolTip("Assign Selection to Active Class")
         assign_sel_btn.clicked.connect(self.assign_selection_to_class)
-        selection_layout.addWidget(assign_sel_btn)
-
-        merge_sel_btn = QPushButton("Merge Selection into Object")
+        merge_sel_btn = QPushButton("Merge")
+        merge_sel_btn.setToolTip("Merge Selection into Object")
         merge_sel_btn.clicked.connect(self.merge_selection_into_object)
-        selection_layout.addWidget(merge_sel_btn)
+        for b in (clear_sel_btn, assign_sel_btn, merge_sel_btn):
+            sel_btn_row.addWidget(b)
+        selection_layout.addLayout(sel_btn_row)
 
         selection_group.setLayout(selection_layout)
 
@@ -3727,6 +3736,7 @@ class ObiaApp(QMainWindow):
         col2_layout.addWidget(selection_group)
         col2_layout.addWidget(train_group)
         col2_layout.addWidget(refine_group)
+        col2_layout.addWidget(self.classify_btn)
         col2_layout.addWidget(gen_group)
         col2_layout.addWidget(self.export_btn)
         col2_layout.addStretch()

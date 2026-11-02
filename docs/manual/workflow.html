@@ -270,7 +270,7 @@
 <ol class="steps">
   <li>Click <span class="ui">Selection Mode: OFF</span> to turn it on. Clicks now select instead of labelling; selected objects show in cyan.</li>
   <li>Click one object as a seed, then drag <span class="ui">Grow Tolerance</span> up. The selection spreads through touching objects similar to the seed.</li>
-  <li>Click <span class="ui">Assign Selection to Active Class</span>, or <span class="ui">Clear Selection</span>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes selection steps.</li>
+  <li>Click <span class="ui">Assign to Class</span> (assigns the selection to the active class), or <span class="ui">Clear</span>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes selection steps.</li>
 </ol>
 <details class="why"><summary>How the tolerance works, and why it can leak</summary>
 <p>Similarity uses six features: mean red, green, blue and brightness, GLCM contrast and homogeneity. Each is divided by its spread across the whole scene, and a neighbour joins if its distance to the seed's average is within <em>tolerance</em> × √6. Growth spreads through any touching object that passes, so a high tolerance can cross into different-looking ground. Start low and raise it in small steps.</p>
@@ -280,7 +280,7 @@
 <p>SLIC cuts large objects (a long roof, a big crown) into pieces, and each piece then has the wrong area and shape. Merge them so the classifier sees the real outline.</p>
 <ol class="steps">
   <li>With Selection Mode on, select the pieces (click, grow, or Ctrl+drag).</li>
-  <li>Click <span class="ui">Merge Selection into Object</span>. The pieces become one object, its features are recomputed, and its neighbours' context features are updated. If the pieces were samples of different classes, the console warns and the first class in the list wins.</li>
+  <li>Click <span class="ui">Merge</span>. The pieces become one object, its features are recomputed, and its neighbours' context features are updated. If the pieces were samples of different classes, the console warns and the first class in the list wins.</li>
 </ol>
 <div class="compare" data-label="Compare a roof before and after merging">
   <img src="img/merge_before.jpg" alt="A long roof split into many segments, selected in cyan">
