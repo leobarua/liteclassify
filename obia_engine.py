@@ -1947,7 +1947,13 @@ class ObiaEngine:
     def apply_sieve_filter(self, classified_array, size_threshold):
         if size_threshold <= 0:
             return classified_array
-        return sieve(classified_array.astype(np.int32), size_threshold).astype(np.uint8)
+        out = sieve(classified_array.astype(np.int32), size_threshold).astype(np.uint8)
+        # Small patches touching only no-data (the image edge) would be merged into the
+        # background and lose their class; keep them as they were instead.
+        lost = (out == 0) & (classified_array != 0)
+        if lost.any():
+            out[lost] = classified_array[lost]
+        return out
 
     # --- Greenness refinement: a pixel-level pass after classification ---------------
     # Objects decide that an area is, say, "bare or grass"; pixels then decide which of
@@ -2371,6 +2377,9 @@ class ObiaEngine:
 
         out = pd.DataFrame({'x': df[x_col].astype(float), 'y': df[y_col].astype(float),
                             'class': df[class_col].astype(str).str.strip()})
+        src_col = find_col(['source'])
+        if src_col is not None:   # written by export_accuracy_points_csv: keep where each point came from
+            out['source'] = df[src_col].astype(str).str.strip().replace({'nan': None, '': None})
         return out[(out['class'] != '') & (out['class'].str.lower() != 'nan')].reset_index(drop=True)
 
     def points_inside_grid(self, xs, ys):
@@ -2422,7 +2431,8 @@ class ObiaEngine:
             {
                 'point_id': list(range(next_id, next_id + n)),
                 'reference_class': df['class'].tolist(),
-                'source': [source_label] * n,
+                'source': (df['source'].fillna(source_label).tolist() if 'source' in df.columns
+                           else [source_label] * n),
                 'predicted_class': [None] * n,
             },
             geometry=geoms, crs=self.ortho_meta['crs']
@@ -2449,6 +2459,8 @@ class ObiaEngine:
             'x': lab.geometry.x.values,
             'y': lab.geometry.y.values,
             'class': lab['reference_class'].astype(str).values,
+            'source': lab['source'].astype(object).where(lab['source'].notna(), '').values
+                      if 'source' in lab.columns else '',
             'crs': crs.to_string() if crs is not None else '',
         })
         out.to_csv(csv_path, index=False, float_format='%.3f')
