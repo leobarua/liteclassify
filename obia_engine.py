@@ -2156,16 +2156,14 @@ class ObiaEngine:
             'strata_without_points': missing, 'seed': st.get("seed"),
         }
 
-    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv'):
+    def read_accuracy_points_csv(self, csv_path):
         """
         Reads point coordinates + a reference class label from a CSV, in the
-        orthomosaic's own CRS (per the plan doc's stated expected format -- this is
-        not a lat/lon-anywhere importer). Column names are matched case-insensitively
-        against a small set of accepted aliases so a reasonable header (x/lon/easting,
-        y/lat/northing, class/label) doesn't force a rename, but a class-name typo is
-        never silently guessed at -- any CSV class name that doesn't exactly match one
-        of valid_class_names raises, listing every mismatch found, so the user fixes
-        the CSV rather than getting a point quietly dropped or mis-labeled.
+        orthomosaic's own CRS (this is not a lat/lon-anywhere importer). Column names are
+        matched case-insensitively against a small set of accepted aliases so a reasonable
+        header (x/lon/easting, y/lat/northing, class/label) doesn't force a rename. A 'crs'
+        column (as written by export_accuracy_points_csv) must match the orthomosaic's.
+        Returns a DataFrame with columns x, y, class (class names stripped).
         """
         if self.ortho_meta is None:
             raise ValueError("Load an orthomosaic before importing ground-truth points.")
@@ -2201,34 +2199,50 @@ class ObiaEngine:
                     f"The CSV's points are in {', '.join(wrong)}, but this orthomosaic is in "
                     f"{ortho.to_string()}. Reproject the points first.")
 
-        csv_classes = set(df[class_col].astype(str).str.strip().unique())
+        out = pd.DataFrame({'x': df[x_col].astype(float), 'y': df[y_col].astype(float),
+                            'class': df[class_col].astype(str).str.strip()})
+        return out[(out['class'] != '') & (out['class'].str.lower() != 'nan')].reset_index(drop=True)
+
+    def import_accuracy_points_csv(self, csv_path, valid_class_names, source_label='field_csv', class_map=None):
+        """
+        Adds the points of a ground-truth CSV (see read_accuracy_points_csv) as labelled
+        accuracy points. class_map: optional {csv class name: class name to use, or None to
+        leave those points out}, from the app's class-matching dialog. After mapping, a
+        class name that doesn't exactly match one of valid_class_names raises, listing every
+        mismatch, so a typo is never silently guessed at. Returns the number imported.
+        """
+        df = self.read_accuracy_points_csv(csv_path)
+        if class_map is not None:
+            df['class'] = df['class'].map(lambda c: class_map.get(c, c))
+            df = df[df['class'].notna()].reset_index(drop=True)
+
         valid_set = set(valid_class_names)
-        mismatched = sorted(csv_classes - valid_set)
+        mismatched = sorted(set(df['class'].unique()) - valid_set)
         if mismatched:
             raise ValueError(
                 f"CSV contains class name(s) that don't exactly match Tab 3's class list: {mismatched}. "
-                f"Expected one of: {sorted(valid_set)}. Fix the CSV's class column (or rename the class "
-                f"in Tab 3) and try again -- class names are matched exactly, not fuzzy-matched, so a "
-                f"mismatch here isn't silently guessed at."
+                f"Expected one of: {sorted(valid_set)}. Match them when importing, fix the CSV, or "
+                f"rename the class in Tab 3."
             )
 
         if self.accuracy_points_gdf is None:
             self.accuracy_points_gdf = self._new_accuracy_points_gdf()
 
         n = len(df)
-        geoms = [Point(x, y) for x, y in zip(df[x_col].astype(float), df[y_col].astype(float))]
+        if n == 0:
+            return 0
+        geoms = [Point(x, y) for x, y in zip(df['x'], df['y'])]
         next_id = self.next_accuracy_point_id
         new_gdf = gpd.GeoDataFrame(
             {
                 'point_id': list(range(next_id, next_id + n)),
-                'reference_class': df[class_col].astype(str).str.strip().tolist(),
+                'reference_class': df['class'].tolist(),
                 'source': [source_label] * n,
                 'predicted_class': [None] * n,
             },
             geometry=geoms, crs=self.ortho_meta['crs']
         )
         self.next_accuracy_point_id = next_id + n
-
         self.accuracy_points_gdf = gpd.GeoDataFrame(
             pd.concat([self.accuracy_points_gdf, new_gdf], ignore_index=True), crs=self.ortho_meta['crs']
         )

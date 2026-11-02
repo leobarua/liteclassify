@@ -285,6 +285,98 @@ class EditClassDialog(QDialog):
         return self.name_edit.text().strip(), self.chosen_color
 
 
+class ClassMatchDialog(QDialog):
+    """ Import Ground Truth CSV: choose, for each class name in the CSV, which workspace
+    class its points belong to, a new class of that name, or to leave them out. Exact
+    names are matched already; names that differ only in case, spacing or punctuation, or
+    by a likely typo, are suggested. """
+    NEW, SKIP = "__new__", "__skip__"
+
+    @staticmethod
+    def _norm(name):
+        return "".join(ch for ch in name.casefold() if ch.isalnum())
+
+    @classmethod
+    def suggest(cls, csv_name, workspace_names):
+        if csv_name in workspace_names:
+            return csv_name
+        norm = {cls._norm(w): w for w in workspace_names}
+        if cls._norm(csv_name) in norm:
+            return norm[cls._norm(csv_name)]
+        import difflib
+        close = difflib.get_close_matches(cls._norm(csv_name), list(norm), n=1, cutoff=0.75)
+        return norm[close[0]] if close else None
+
+    def __init__(self, csv_counts, workspace_names, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Match Classes")
+        self.setMinimumWidth(560)
+        self.workspace_names = list(workspace_names)
+        layout = QVBoxLayout(self)
+        intro = QLabel("Some class names in the CSV don't match this workspace. Choose where each one's "
+                       "points go. A new class gets no training samples; collect them in Tab 3 before "
+                       "classifying.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.table = QTableWidget(len(csv_counts), 3)
+        self.table.setHorizontalHeaderLabels(["Class in CSV", "Points", "Import as"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.combos = {}
+        for row, (name, n) in enumerate(sorted(csv_counts.items())):
+            self.table.setItem(row, 0, QTableWidgetItem(name))
+            self.table.setItem(row, 1, QTableWidgetItem(str(n)))
+            combo = QComboBox()
+            for w in self.workspace_names:
+                combo.addItem(w, w)
+            combo.addItem(f"New class \u201c{name}\u201d", self.NEW)
+            combo.addItem("Don't import these points", self.SKIP)
+            match = self.suggest(name, self.workspace_names)
+            combo.setCurrentIndex(combo.findData(match) if match is not None else combo.findData(self.NEW))
+            combo.currentIndexChanged.connect(self._update_missing)
+            self.table.setCellWidget(row, 2, combo)
+            self.combos[name] = combo
+        layout.addWidget(self.table)
+        self.missing_label = QLabel()
+        self.missing_label.setWordWrap(True)
+        self.missing_label.setStyleSheet("color: #d9a441;")
+        layout.addWidget(self.missing_label)
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch(1)
+        ok_btn = QPushButton("Import")
+        ok_btn.setDefault(True)
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+        self._update_missing()
+
+    def mapping(self):
+        """ {csv name: target class name or None (leave out)}, and the new class names. """
+        out, new = {}, []
+        for name, combo in self.combos.items():
+            v = combo.currentData()
+            if v == self.SKIP:
+                out[name] = None
+            elif v == self.NEW:
+                out[name] = name
+                new.append(name)
+            else:
+                out[name] = v
+        return out, new
+
+    def _update_missing(self, *_):
+        used = {v for v in self.mapping()[0].values() if v}
+        missing = [w for w in self.workspace_names if w not in used]
+        self.missing_label.setText("No points in this CSV for: " + ", ".join(missing) + "." if missing else "")
+        self.missing_label.setVisible(bool(missing))
+
+
 # --- Main window ---
 class ObiaApp(QMainWindow):
     def __init__(self):
@@ -3109,7 +3201,7 @@ class ObiaApp(QMainWindow):
                 out.setdefault(info["name"], []).append(k)
         return out
 
-    def _ensure_class(self, name, color_hex=None):
+    def _ensure_class(self, name, color_hex=None, source="Discover"):
         if name in self.classes:
             return
         color = QColor(suggest_class_color(name, [d["color"].name() for d in self.classes.values()]))
@@ -3117,7 +3209,7 @@ class ObiaApp(QMainWindow):
         item = QListWidgetItem(f"{name} (0)")
         item.setBackground(color)
         self.class_list_widget.addItem(item)
-        print(f" -> New class '{name}' created from Discover.")
+        print(f" -> New class '{name}' created from {source}.")
 
     def send_groups_to_classification(self):
         if self.groups is None:
@@ -3917,20 +4009,57 @@ class ObiaApp(QMainWindow):
         if self.engine.ortho_data is None:
             print("Error: Load an orthomosaic first before importing ground-truth points.")
             return
-        if not self.classes:
-            print("Error: Define at least one class in Tab 3 before importing ground-truth points.")
-            return
         try:
-            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()))
-            self.acc_csv_path_edit.setText(file_path)
-            trailing = " — no expert labeling needed for this run" if not self.acc_supp_expert_check.isChecked() else ""
-            self.acc_csv_summary_label.setText(
-                f"{n} points loaded from CSV.\nAll class names matched your Tab 3 class list.\nReady to run{trailing}."
-            )
-            print(f"Imported {n} ground-truth point(s) from CSV.")
-            self.refresh_accuracy_ui()
+            df = self.engine.read_accuracy_points_csv(file_path)
         except Exception as e:
             QMessageBox.critical(self, "CSV Import Failed", str(e))
+            self.sync_accuracy_gt_controls()
+            return
+        counts = df["class"].value_counts().to_dict()
+        names = list(self.classes.keys())
+        class_map, new = None, []
+        if any(c not in self.classes for c in counts):
+            dlg = ClassMatchDialog(counts, names, self)
+            if dlg.exec() != QDialog.Accepted:
+                print("CSV import cancelled.")
+                self.sync_accuracy_gt_controls()
+                return
+            class_map, new = dlg.mapping()
+        try:
+            for name in new:
+                self._ensure_class(name, source="the ground-truth CSV")
+            if new:
+                self.rebuild_sample_class_map()
+            n = self.engine.import_accuracy_points_csv(file_path, list(self.classes.keys()), class_map=class_map)
+        except Exception as e:
+            QMessageBox.critical(self, "CSV Import Failed", str(e))
+            self.sync_accuracy_gt_controls()
+            return
+        targets = set(counts) if class_map is None else {v for v in class_map.values() if v}
+        skipped = [c for c, v in (class_map or {}).items() if v is None]
+        renamed = {c: v for c, v in (class_map or {}).items() if v and v != c}
+        no_points = [c for c in names if c not in targets]
+        lines = [f"{n} points loaded from CSV."]
+        if renamed:
+            lines.append("Matched: " + ", ".join(f"{c} → {v}" for c, v in renamed.items()) + ".")
+        if new:
+            lines.append("New class(es), no training samples yet: " + ", ".join(new) + ".")
+        if skipped:
+            lines.append(f"Left out: {sum(counts[c] for c in skipped)} point(s) of " + ", ".join(skipped) + ".")
+        if no_points:
+            lines.append("No points for: " + ", ".join(no_points) + ".")
+        trailing = " — no expert labeling needed for this run" if not self.acc_supp_expert_check.isChecked() else ""
+        lines.append(f"Ready to run{trailing}.")
+        self.acc_csv_path_edit.setText(file_path)
+        self.acc_csv_summary_label.setText("\n".join(lines))
+        print(f"Imported {n} ground-truth point(s) from CSV. " + " ".join(lines[1:-1]))
+        if no_points:
+            QMessageBox.information(
+                self, "CSV Import",
+                f"{n} points imported. The CSV has no points for: {', '.join(no_points)}.\n\n"
+                "Those classes won't be assessed unless you add points for them (Random Point "
+                "Generation or right-click Add Point).")
+        self.refresh_accuracy_ui()
         self.sync_accuracy_gt_controls()
 
     def generate_accuracy_points(self):
